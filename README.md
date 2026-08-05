@@ -156,15 +156,17 @@ python cli.py serve
 python cli.py serve --host 0.0.0.0 --port 8080
 ```
 
-#### 🌐 Free 1-Click Cloud Deployment (Render.com)
+#### 🌐 Live Demo & Free 1-Click Cloud Deployment (Render.com)
 
-You can host the REST API publicly for free on [Render.com](https://render.com) using Docker:
+- 🚀 **Live Interactive REST API Demo**: [https://ufcstats-parser.onrender.com/docs](https://ufcstats-parser.onrender.com/docs)
+
+You can also host your own instance publicly on [Render.com](https://render.com) using Docker:
 
 [![Deploy to Render](https://img.shields.io/badge/Deploy%20to-Render-46E3B7?style=for-the-badge&logo=render&logoColor=white)](https://render.com/deploy?repo=https://github.com/nickchemin/ufcstats-parser)
 
 1. Click the **Deploy to Render** button above (or sign up on [Render.com](https://render.com) for free).
 2. Connect your GitHub repository `nickchemin/ufcstats-parser`.
-3. Render automatically detects `render.yaml` & `Dockerfile`, builds the service, and provides a free public HTTPS domain with interactive Swagger UI at `https://<your-app>.onrender.com/docs`.
+3. Render automatically detects `render.yaml` & `Dockerfile`, builds the service, and provides a free public HTTPS domain with interactive Swagger UI.
 
 ### 5. Database & Cache Utilities
 
