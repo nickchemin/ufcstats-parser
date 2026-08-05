@@ -1,6 +1,12 @@
-# UFCStats Parser
+# UFCStats Parser & ML Dataset Generator
 
-A high-performance Python scraper, data parser, and CLI toolkit for extracting historical and ongoing fight statistics, detailed round-by-round metrics, and fighter profiles from [ufcstats.com](http://www.ufcstats.com).
+[![CI Build](https://github.com/nickchemin/ufcstats-parser/actions/workflows/ci.yml/badge.svg)](https://github.com/nickchemin/ufcstats-parser/actions/workflows/ci.yml)
+[![Weekly Auto-Scraper](https://github.com/nickchemin/ufcstats-parser/actions/workflows/weekly_scraper.yml/badge.svg)](https://github.com/nickchemin/ufcstats-parser/actions/workflows/weekly_scraper.yml)
+[![Python Version](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.14-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![FastAPI](https://img.shields.io/badge/FastAPI-REST%20API-009688.svg)](https://fastapi.tiangolo.com/)
+
+A high-performance Python scraper, data parser, ML feature engineering pipeline, REST API, and CLI toolkit for extracting historical and ongoing fight statistics, detailed round-by-round metrics, and fighter profiles from [ufcstats.com](http://www.ufcstats.com).
 
 Designed for data scientists, sports analysts, and developers building MMA analytics tools, fight predictor models, or archival databases.
 
