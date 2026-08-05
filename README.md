@@ -217,6 +217,11 @@ Unlike standard Cloudflare setups, `ufcstats.com` serves an inline client-side S
 - **Thread-safe Rate Limiting**: Randomizes delay intervals between 1.5s–3.5s with extended cool-down pauses every 50 requests.
 - **WAL Journaling Mode**: SQLite is initialized with `PRAGMA journal_mode=WAL` for concurrent read/write performance.
 
+### Automated Weekly Scraper (CI/CD)
+
+- Includes a GitHub Actions workflow (`.github/workflows/weekly_scraper.yml`) running every Monday at 00:00 UTC.
+- Automatically crawls newly completed events, upcoming cards, generates the ML dataset, and uploads the SQLite database & CSV/JSON datasets as downloadable GitHub Action Artifacts.
+
 ---
 
 ## Project Structure

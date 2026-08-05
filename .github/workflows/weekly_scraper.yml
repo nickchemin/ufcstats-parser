@@ -1,0 +1,50 @@
+name: Weekly Auto-Scraper
+
+on:
+  schedule:
+    # Run every Monday at 00:00 UTC (after weekend UFC events)
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+jobs:
+  scrape-and-export:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Incremental Events Crawl
+      run: |
+        python cli.py crawl --incremental
+
+    - name: Run Upcoming Events Crawl
+      run: |
+        python cli.py crawl --upcoming
+
+    - name: Generate Machine Learning Dataset
+      run: |
+        python cli.py transform --format csv --output data/ml_dataset.csv
+
+    - name: Export JSON & CSV Datasets
+      run: |
+        python cli.py export --format all --output data/
+
+    - name: Upload Database & Datasets Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ufc-data-artifacts
+        path: |
+          ufc_data.db
+          data/
+        retention-days: 90
