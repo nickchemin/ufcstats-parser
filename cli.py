@@ -27,6 +27,7 @@ from rich import box
 
 from src.scraper import UFCStatsScraper
 from src.storage.cache import FileCache
+from src.storage.checker import DatabaseChecker
 from src.storage.database import Database
 from src.storage.exporter import Exporter
 from src.storage.ml_dataset import MLDatasetGenerator
@@ -427,6 +428,38 @@ def db(ctx, stats):
         table.add_row("Fights", str(s["fights"]))
         table.add_row("Round Stats Rows", str(s["round_stats_rows"]))
         rich_console.print(table)
+
+
+# ------------------------------------------------------------------
+# check
+# ------------------------------------------------------------------
+
+@cli.command()
+@click.pass_context
+def check(ctx):
+    """Check database integrity and data quality diagnostics"""
+    checker = DatabaseChecker(ctx.obj["db_path"])
+    report = checker.run_diagnostics()
+
+    if "error" in report:
+        rich_console.print(f"[bold red]{report['error']}[/]")
+        return
+
+    table = Table(title=f"Data Quality & Integrity Report ({report['db_path']})", box=box.ROUNDED)
+    table.add_column("Diagnostic Check", style="bold white")
+    table.add_column("Status / Count", style="cyan")
+
+    table.add_row("Health Score", f"[bold green]{report['health_score_pct']}%[/]")
+    table.add_row("Orphan Fights", str(report['orphans']['orphan_fights']))
+    table.add_row("Orphan Fight Stats", str(report['orphans']['orphan_fight_stats']))
+    table.add_row("Orphan Round Stats", str(report['orphans']['orphan_round_stats']))
+    table.add_row("Unlinked Fighter IDs", str(report['missing_links']['unlinked_fighters_count']))
+    table.add_row("Completed Fights Missing Stats", str(report['missing_links']['completed_fights_missing_stats']))
+    table.add_row("Fighters Missing Reach", str(report['profile_coverage']['missing_reach_count']))
+    table.add_row("Fighters Missing DOB", str(report['profile_coverage']['missing_dob_count']))
+    table.add_row("Invalid Strike Anomalies", str(report['anomalies']['invalid_strikes_count']))
+
+    rich_console.print(table)
 
 
 # ------------------------------------------------------------------

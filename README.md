@@ -141,6 +141,9 @@ python cli.py transform --format excel --output ./data/ml_dataset.xlsx
 ### 4. Database & Cache Utilities
 
 ```bash
+# Run data quality & database integrity diagnostics report
+python cli.py check
+
 # View summary metrics of stored events, fights, fighters, and round rows
 python cli.py db --stats
 
