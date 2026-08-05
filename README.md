@@ -138,7 +138,19 @@ python cli.py transform --format parquet --output ./data/ml_dataset.parquet
 python cli.py transform --format excel --output ./data/ml_dataset.xlsx
 ```
 
-### 4. Database & Cache Utilities
+### 4. REST API Server
+
+The `serve` command launches an embedded FastAPI REST server providing HTTP endpoints for events, fights, fighter profiles, ML datasets, and health metrics with interactive Swagger UI.
+
+```bash
+# Start REST API server at http://127.0.0.1:8000 (Swagger docs at http://127.0.0.1:8000/docs)
+python cli.py serve
+
+# Start REST API server on custom host and port
+python cli.py serve --host 0.0.0.0 --port 8080
+```
+
+### 5. Database & Cache Utilities
 
 ```bash
 # Run data quality & database integrity diagnostics report
@@ -240,6 +252,7 @@ ufcstats-parser/
 ├── README.md                 # Project documentation
 └── src/
     ├── __init__.py
+    ├── api.py                # FastAPI REST server & Swagger UI engine
     ├── scraper.py            # Custom HTTP client & PoW solver
     ├── parsers/              # HTML parser modules
     │   ├── __init__.py

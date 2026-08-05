@@ -463,6 +463,29 @@ def check(ctx):
 
 
 # ------------------------------------------------------------------
+# serve
+# ------------------------------------------------------------------
+
+@cli.command()
+@click.option("--host", default="127.0.0.1", show_default=True, help="Host address to bind HTTP server")
+@click.option("--port", default=8000, show_default=True, type=int, help="Port to bind HTTP server")
+@click.pass_context
+def serve(ctx, host, port):
+    """Start embedded FastAPI REST API server with interactive Swagger UI"""
+    try:
+        import uvicorn
+        from src.api import app, set_db_path
+    except ImportError:
+        rich_console.print("[bold red]FastAPI and Uvicorn are required for REST API. Run: pip install fastapi uvicorn[/]")
+        return
+
+    set_db_path(ctx.obj["db_path"])
+    rich_console.print(f"[bold green]Starting UFCStats REST API server at http://{host}:{port}[/]")
+    rich_console.print(f"[bold cyan]Interactive Swagger UI available at http://{host}:{port}/docs[/]")
+    uvicorn.run(app, host=host, port=port, log_level="info")
+
+
+# ------------------------------------------------------------------
 # Entry point
 # ------------------------------------------------------------------
 
