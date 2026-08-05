@@ -130,12 +130,18 @@ def test_ml_dataset_export(populated_db, tmp_path):
 
     csv_path = tmp_path / "ml_dataset.csv"
     json_path = tmp_path / "ml_dataset.json"
+    parquet_path = tmp_path / "ml_dataset.parquet"
+    excel_path = tmp_path / "ml_dataset.xlsx"
 
     generator.export_ml_dataset(str(csv_path), output_format="csv")
     generator.export_ml_dataset(str(json_path), output_format="json")
+    generator.export_ml_dataset(str(parquet_path), output_format="parquet")
+    generator.export_ml_dataset(str(excel_path), output_format="excel")
 
     assert csv_path.exists()
     assert json_path.exists()
+    assert parquet_path.exists()
+    assert excel_path.exists()
 
     with open(json_path, encoding="utf-8") as f:
         data = json.load(f)

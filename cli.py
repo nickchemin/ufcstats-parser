@@ -317,7 +317,7 @@ def _crawl_fighters(scraper, db, incremental):
 @click.option(
     "--format",
     "fmt",
-    type=click.Choice(["json", "csv", "all"], case_sensitive=False),
+    type=click.Choice(["json", "csv", "parquet", "excel", "all"], case_sensitive=False),
     default="all",
     show_default=True,
     help="Export format",
@@ -330,7 +330,7 @@ def _crawl_fighters(scraper, db, incremental):
 )
 @click.pass_context
 def export(ctx, fmt, output, tables):
-    """Export database content to JSON/CSV files"""
+    """Export database content to JSON/CSV/Parquet/Excel files"""
     db_path = ctx.obj["db_path"]
     exporter = Exporter(db_path)
     table_list = [t.strip() for t in tables.split(",")] if tables else None
@@ -339,6 +339,10 @@ def export(ctx, fmt, output, tables):
         exporter.export_json(output, table_list)
     if fmt in ("csv", "all"):
         exporter.export_csv(output, table_list)
+    if fmt in ("parquet", "all"):
+        exporter.export_parquet(output, table_list)
+    if fmt in ("excel", "all"):
+        exporter.export_excel(output, table_list)
 
     rich_console.print(f"[bold green]Export complete -> {Path(output).resolve()}[/]")
 
@@ -351,7 +355,7 @@ def export(ctx, fmt, output, tables):
 @click.option(
     "--format",
     "fmt",
-    type=click.Choice(["csv", "json"], case_sensitive=False),
+    type=click.Choice(["csv", "json", "parquet", "excel"], case_sensitive=False),
     default="csv",
     show_default=True,
     help="Output dataset format",

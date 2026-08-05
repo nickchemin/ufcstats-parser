@@ -203,7 +203,7 @@ class MLDatasetGenerator:
             conn.close()
 
     def export_ml_dataset(self, output_path: str = "data/ml_dataset.csv", output_format: str = "csv") -> None:
-        """Builds dataset and writes output to CSV or JSON file."""
+        """Builds dataset and writes output to CSV, JSON, Parquet, or Excel file."""
         dataset = self.build_dataset()
         out_path = Path(output_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -212,10 +212,38 @@ class MLDatasetGenerator:
             logger.warning("No fights found in database to generate ML dataset")
             return
 
-        if output_format.lower() == "json":
+        fmt = output_format.lower()
+
+        if fmt == "json":
             with open(out_path, "w", encoding="utf-8") as f:
                 json.dump(dataset, f, ensure_ascii=False, indent=2, default=str)
             logger.info(f"[ML Dataset JSON] Exported {len(dataset)} matchups -> {out_path}")
+
+        elif fmt == "parquet":
+            try:
+                import pyarrow as pa
+                import pyarrow.parquet as pq
+                table = pa.Table.from_pylist(dataset)
+                pq.write_table(table, out_path)
+                logger.info(f"[ML Dataset Parquet] Exported {len(dataset)} matchups -> {out_path}")
+            except ImportError:
+                logger.error("pyarrow is required for Parquet export. Run: pip install pyarrow")
+
+        elif fmt in ("excel", "xlsx"):
+            try:
+                from openpyxl import Workbook
+                wb = Workbook()
+                ws = wb.active
+                ws.title = "ML_Dataset"
+                headers = list(dataset[0].keys())
+                ws.append(headers)
+                for r in dataset:
+                    ws.append([str(v) if v is not None else "" for v in r.values()])
+                wb.save(out_path)
+                logger.info(f"[ML Dataset Excel] Exported {len(dataset)} matchups -> {out_path}")
+            except ImportError:
+                logger.error("openpyxl is required for Excel export. Run: pip install openpyxl")
+
         else:
             headers = dataset[0].keys()
             with open(out_path, "w", newline="", encoding="utf-8-sig") as f:

@@ -136,9 +136,13 @@ def test_exporter(tmp_db, tmp_path):
 
     json_file = export_dir / "events.json"
     csv_file = export_dir / "events.csv"
+    parquet_file = export_dir / "events.parquet"
+    excel_file = export_dir / "ufc_database.xlsx"
 
     assert json_file.exists()
     assert csv_file.exists()
+    assert parquet_file.exists()
+    assert excel_file.exists()
 
     with open(json_file, encoding="utf-8") as f:
         data = json.load(f)

@@ -1,5 +1,5 @@
 """
-Data export module for JSON and CSV output formats.
+Data export module for JSON, CSV, Parquet, and Excel output formats.
 """
 
 import csv
@@ -16,7 +16,7 @@ TABLES = ["events", "fighters", "fights", "fight_stats", "round_stats"]
 
 
 class Exporter:
-    """Exports SQLite data to JSON and CSV formats."""
+    """Exports SQLite data to JSON, CSV, Parquet, and Excel formats."""
 
     def __init__(self, db_path: str = "ufc_data.db"):
         self.db_path = Path(db_path)
@@ -61,9 +61,68 @@ class Exporter:
                 writer.writerows(rows)
             logger.info(f"[CSV] {table}: {len(rows)} records -> {path}")
 
+    def export_parquet(self, output_dir: str = "data", tables: List[str] = None) -> None:
+        """Exports specified database tables to Apache Parquet binary files using pyarrow."""
+        try:
+            import pyarrow as pa
+            import pyarrow.parquet as pq
+        except ImportError:
+            logger.error("pyarrow is required for Parquet export. Run: pip install pyarrow")
+            return
+
+        out = Path(output_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        tables = tables or TABLES
+
+        for table in tables:
+            rows = self._load_table(table)
+            if not rows:
+                logger.warning(f"[Parquet] {table}: empty table")
+                continue
+            path = out / f"{table}.parquet"
+            try:
+                # Convert list of dicts to PyArrow table
+                pa_table = pa.Table.from_pylist(rows)
+                pq.write_table(pa_table, path)
+                logger.info(f"[Parquet] {table}: {len(rows)} records -> {path}")
+            except Exception as e:
+                logger.error(f"[Parquet error] {table}: {e}")
+
+    def export_excel(self, output_dir: str = "data", tables: List[str] = None) -> None:
+        """Exports specified database tables into an Excel workbook (.xlsx)."""
+        try:
+            from openpyxl import Workbook
+        except ImportError:
+            logger.error("openpyxl is required for Excel export. Run: pip install openpyxl")
+            return
+
+        out = Path(output_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        tables = tables or TABLES
+
+        wb = Workbook()
+        # Remove default sheet
+        wb.remove(wb.active)
+
+        for table in tables:
+            rows = self._load_table(table)
+            ws = wb.create_sheet(title=table[:31])  # Excel sheet title limit is 31 chars
+
+            if rows:
+                headers = list(rows[0].keys())
+                ws.append(headers)
+                for r in rows:
+                    ws.append([str(v) if v is not None else "" for v in r.values()])
+
+        excel_path = out / "ufc_database.xlsx"
+        wb.save(excel_path)
+        logger.info(f"[Excel] Saved database workbook -> {excel_path}")
+
     def export_all(self, output_dir: str = "data") -> None:
-        """Exports all database tables to both JSON and CSV files."""
+        """Exports all database tables to JSON, CSV, Parquet, and Excel formats."""
         logger.info(f"Exporting data to {output_dir}/")
         self.export_json(output_dir)
         self.export_csv(output_dir)
+        self.export_parquet(output_dir)
+        self.export_excel(output_dir)
         logger.info("Export completed")

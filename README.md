@@ -110,29 +110,32 @@ python cli.py crawl --all --limit-events 5
 
 ### 2. Exporting Data
 
-The `export` command converts stored SQLite tables into JSON or CSV files.
+The `export` command converts stored SQLite tables into JSON, CSV, Parquet, or Excel formats.
 
 ```bash
-# Export all tables to both JSON and CSV files in ./data/
+# Export all tables to all supported formats in ./data/
 python cli.py export --format all --output ./data/
 
-# Export specific tables to JSON format only
-python cli.py export --format json --tables events,fights
+# Export specific tables to Apache Parquet binary format
+python cli.py export --format parquet --tables events,fights
 
-# Export specific tables to CSV format only
-python cli.py export --format csv --tables fight_stats,round_stats
+# Export database tables to an Excel workbook (.xlsx)
+python cli.py export --format excel --output ./data/
 ```
 
 ### 3. Machine Learning Dataset Transformation
 
-The `transform` command generates a flat CSV or JSON dataset comparing Fighter 1 vs Fighter 2 with calculated physical, record, striking, and grappling feature differentials for predictive modeling.
+The `transform` command generates a flat dataset comparing Fighter 1 vs Fighter 2 with calculated physical, record, striking, and grappling feature differentials for predictive modeling.
 
 ```bash
 # Generate ML dataset in CSV format
 python cli.py transform --format csv --output ./data/ml_dataset.csv
 
-# Generate ML dataset in JSON format
-python cli.py transform --format json --output ./data/ml_dataset.json
+# Generate ML dataset in Apache Parquet format
+python cli.py transform --format parquet --output ./data/ml_dataset.parquet
+
+# Generate ML dataset in Excel format
+python cli.py transform --format excel --output ./data/ml_dataset.xlsx
 ```
 
 ### 4. Database & Cache Utilities
