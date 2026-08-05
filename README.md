@@ -98,7 +98,10 @@ python cli.py crawl --fighters
 # Fast crawl: skip detailed round-by-round statistics
 python cli.py crawl --all --no-fight-details
 
-# Test crawl: limit the number of events to process
+# Skip full fighter directory crawl
+python cli.py crawl --all --no-fighters
+
+# Test crawl: limit the number of events to process (skips full fighter directory)
 python cli.py crawl --all --limit-events 5
 ```
 

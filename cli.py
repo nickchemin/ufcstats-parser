@@ -96,10 +96,10 @@ def cli(ctx, db, cache_dir, delay_min, delay_max, verbose):
 @click.option("--incremental", is_flag=True, help="Crawl only new entries (skip existing in DB)")
 @click.option("--event", "event_name", default=None, help="Crawl specific event by name substring")
 @click.option("--fighters", "only_fighters", is_flag=True, help="Crawl fighter profiles only")
-@click.option("--no-fight-details", is_flag=True, help="Skip detailed fight round statistics")
+@click.option("--no-fighters", is_flag=True, help="Skip crawling full fighter profiles directory")
 @click.option("--limit-events", default=None, type=int, help="Limit number of events to process")
 @click.pass_context
-def crawl(ctx, crawl_all, incremental, event_name, only_fighters, no_fight_details, limit_events):
+def crawl(ctx, crawl_all, incremental, event_name, only_fighters, no_fight_details, no_fighters, limit_events):
     """Crawl data from ufcstats.com"""
     obj = ctx.obj
     cache = FileCache(obj["cache_dir"])
@@ -119,7 +119,8 @@ def crawl(ctx, crawl_all, incremental, event_name, only_fighters, no_fight_detai
             _crawl_single_event(scraper, db, event_name, no_fight_details)
         elif crawl_all or incremental:
             _crawl_all_events(scraper, db, incremental, no_fight_details, limit_events)
-            _crawl_fighters(scraper, db, incremental)
+            if not no_fighters and limit_events is None:
+                _crawl_fighters(scraper, db, incremental)
         else:
             click.echo(
                 "Please specify a mode: --all, --incremental, --event <name>, or --fighters\n"
