@@ -29,6 +29,7 @@ from src.scraper import UFCStatsScraper
 from src.storage.cache import FileCache
 from src.storage.database import Database
 from src.storage.exporter import Exporter
+from src.storage.ml_dataset import MLDatasetGenerator
 from src.storage.models import Fighter
 from src.parsers.events import parse_events_page, EVENTS_URL
 from src.parsers.fights import parse_event_fights
@@ -314,6 +315,35 @@ def export(ctx, fmt, output, tables):
         exporter.export_csv(output, table_list)
 
     rich_console.print(f"[bold green]Export complete -> {Path(output).resolve()}[/]")
+
+
+# ------------------------------------------------------------------
+# transform
+# ------------------------------------------------------------------
+
+@cli.command()
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["csv", "json"], case_sensitive=False),
+    default="csv",
+    show_default=True,
+    help="Output dataset format",
+)
+@click.option(
+    "--output",
+    "-o",
+    default="data/ml_dataset.csv",
+    show_default=True,
+    help="Output file path",
+)
+@click.pass_context
+def transform(ctx, fmt, output):
+    """Generate ML-ready matchup dataset with feature differentials"""
+    db_path = ctx.obj["db_path"]
+    generator = MLDatasetGenerator(db_path)
+    generator.export_ml_dataset(output_path=output, output_format=fmt)
+    rich_console.print(f"[bold green]ML dataset generated -> {Path(output).resolve()}[/]")
 
 
 # ------------------------------------------------------------------

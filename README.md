@@ -120,7 +120,19 @@ python cli.py export --format json --tables events,fights
 python cli.py export --format csv --tables fight_stats,round_stats
 ```
 
-### 3. Database & Cache Utilities
+### 3. Machine Learning Dataset Transformation
+
+The `transform` command generates a flat CSV or JSON dataset comparing Fighter 1 vs Fighter 2 with calculated physical, record, striking, and grappling feature differentials for predictive modeling.
+
+```bash
+# Generate ML dataset in CSV format
+python cli.py transform --format csv --output ./data/ml_dataset.csv
+
+# Generate ML dataset in JSON format
+python cli.py transform --format json --output ./data/ml_dataset.json
+```
+
+### 4. Database & Cache Utilities
 
 ```bash
 # View summary metrics of stored events, fights, fighters, and round rows
@@ -221,10 +233,11 @@ ufcstats-parser/
     │   ├── fights.py         # Event fights list parser
     │   ├── fight_detail.py   # Detailed fight & round metrics parser
     │   └── fighters.py       # Fighter bio & directory parser
-    ├── storage/              # Persistence & export layer
+    ├── storage/              # Persistence, ML & export layer
     │   ├── __init__.py
     │   ├── models.py         # Pydantic data models
     │   ├── database.py       # SQLite manager & schema definitions
+    │   ├── ml_dataset.py     # Feature engineering & ML dataset generator
     │   ├── cache.py          # Disk cache implementation
     │   └── exporter.py       # JSON & CSV export logic
     └── utils/                # Helper utilities
