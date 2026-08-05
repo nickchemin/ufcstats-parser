@@ -96,6 +96,7 @@ def cli(ctx, db, cache_dir, delay_min, delay_max, verbose):
 @click.option("--incremental", is_flag=True, help="Crawl only new entries (skip existing in DB)")
 @click.option("--event", "event_name", default=None, help="Crawl specific event by name substring")
 @click.option("--fighters", "only_fighters", is_flag=True, help="Crawl fighter profiles only")
+@click.option("--no-fight-details", is_flag=True, help="Skip detailed fight round statistics")
 @click.option("--no-fighters", is_flag=True, help="Skip crawling full fighter profiles directory")
 @click.option("--limit-events", default=None, type=int, help="Limit number of events to process")
 @click.pass_context
