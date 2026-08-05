@@ -162,9 +162,9 @@ You can host the REST API publicly for free on [Render.com](https://render.com) 
 
 [![Deploy to Render](https://img.shields.io/badge/Deploy%20to-Render-46E3B7?style=for-the-badge&logo=render&logoColor=white)](https://render.com/deploy?repo=https://github.com/nickchemin/ufcstats-parser)
 
-1. Sign up on [Render.com](https://render.com) (free).
-2. Click **New** -> **Web Service** -> Connect your GitHub repository `nickchemin/ufcstats-parser`.
-3. Select **Docker** environment. Render will automatically build the `Dockerfile` and serve your API with free SSL HTTPS certificates and interactive Swagger UI at `https://your-app.onrender.com/docs`.
+1. Click the **Deploy to Render** button above (or sign up on [Render.com](https://render.com) for free).
+2. Connect your GitHub repository `nickchemin/ufcstats-parser`.
+3. Render automatically detects `render.yaml` & `Dockerfile`, builds the service, and provides a free public HTTPS domain with interactive Swagger UI at `https://<your-app>.onrender.com/docs`.
 
 ### 5. Database & Cache Utilities
 
