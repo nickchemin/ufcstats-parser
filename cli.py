@@ -209,6 +209,19 @@ def _process_event(scraper, db, event, no_fight_details):
     for fight in fights:
         db.upsert_fight(fight)
 
+        # Auto-create fighter stubs if not present in DB
+        for fid, fname in [(fight.fighter1_id, fight.fighter1_name), (fight.fighter2_id, fight.fighter2_name)]:
+            if fid:
+                parts = fname.split() if fname else ["Fighter", fid[:4]]
+                first_name = parts[0]
+                last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
+                db.upsert_fighter(Fighter(
+                    fighter_id=fid,
+                    url=f"http://www.ufcstats.com/fighter-details/{fid}",
+                    first_name=first_name,
+                    last_name=last_name,
+                ))
+
         if not no_fight_details:
             fight_soup = scraper.get_soup(fight.url)
             if fight_soup:

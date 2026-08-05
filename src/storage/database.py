@@ -221,15 +221,27 @@ class Database:
             datetime('now')
         )
         ON CONFLICT(fighter_id) DO UPDATE SET
-            first_name=excluded.first_name, last_name=excluded.last_name,
-            nickname=excluded.nickname, height_cm=excluded.height_cm,
-            weight_kg=excluded.weight_kg, reach_cm=excluded.reach_cm,
-            stance=excluded.stance, dob=excluded.dob,
-            wins=excluded.wins, losses=excluded.losses,
-            draws=excluded.draws, no_contests=excluded.no_contests,
-            slpm=excluded.slpm, str_acc=excluded.str_acc, sapm=excluded.sapm,
-            str_def=excluded.str_def, td_avg=excluded.td_avg, td_acc=excluded.td_acc,
-            td_def=excluded.td_def, sub_avg=excluded.sub_avg, updated_at=excluded.updated_at
+            first_name=COALESCE(excluded.first_name, fighters.first_name),
+            last_name=COALESCE(excluded.last_name, fighters.last_name),
+            nickname=COALESCE(excluded.nickname, fighters.nickname),
+            height_cm=COALESCE(excluded.height_cm, fighters.height_cm),
+            weight_kg=COALESCE(excluded.weight_kg, fighters.weight_kg),
+            reach_cm=COALESCE(excluded.reach_cm, fighters.reach_cm),
+            stance=COALESCE(excluded.stance, fighters.stance),
+            dob=COALESCE(excluded.dob, fighters.dob),
+            wins=COALESCE(excluded.wins, fighters.wins),
+            losses=COALESCE(excluded.losses, fighters.losses),
+            draws=COALESCE(excluded.draws, fighters.draws),
+            no_contests=COALESCE(excluded.no_contests, fighters.no_contests),
+            slpm=COALESCE(excluded.slpm, fighters.slpm),
+            str_acc=COALESCE(excluded.str_acc, fighters.str_acc),
+            sapm=COALESCE(excluded.sapm, fighters.sapm),
+            str_def=COALESCE(excluded.str_def, fighters.str_def),
+            td_avg=COALESCE(excluded.td_avg, fighters.td_avg),
+            td_acc=COALESCE(excluded.td_acc, fighters.td_acc),
+            td_def=COALESCE(excluded.td_def, fighters.td_def),
+            sub_avg=COALESCE(excluded.sub_avg, fighters.sub_avg),
+            updated_at=excluded.updated_at
         """
         with self._connect() as conn:
             data = fighter.model_dump()
