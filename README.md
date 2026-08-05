@@ -264,8 +264,13 @@ Unlike standard Cloudflare setups, `ufcstats.com` serves an inline client-side S
 ufcstats-parser/
 ├── cli.py                    # Main Click CLI application entry point
 ├── requirements.txt          # Python package dependencies
+├── Dockerfile                # Docker container configuration
+├── render.yaml               # 1-click cloud deployment config
+├── CONTRIBUTING.md           # Open-source contribution guidelines
 ├── LICENSE                   # MIT License
 ├── README.md                 # Project documentation
+├── examples/
+│   └── demo.py               # Machine Learning dataset predictor demo script
 └── src/
     ├── __init__.py
     ├── api.py                # FastAPI REST server & Swagger UI engine
