@@ -1,0 +1,32 @@
+name: Create GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Create Release Notes
+      id: changelog
+      uses: softprops/action-gh-release@v2
+      with:
+        name: UFCStats Parser ${{ github.ref_name }}
+        body: |
+          ## UFCStats Parser & ML Dataset Generator ${{ github.ref_name }}
+
+          ### 🚀 Features Included in this Release:
+          - **Automated SHA-256 PoW Bypass**: Fast client-side Proof-of-Work solver for `ufcstats.com` challenge pages.
+          - **Full Parsing Suite**: Historical events, upcoming cards (`--upcoming`), fight details, round-by-round statistics, and fighter profiles.
+          - **Multi-Format Exporter**: SQLite DB, JSON, CSV, Apache Parquet (`.parquet`), and Excel (`.xlsx`).
+          - **ML Feature Engineering**: Automatic dataset generator (`python cli.py transform`) computing fighter physical, age, record, striking, and grappling differentials.
+          - **Data Quality Checker**: `python cli.py check` to evaluate foreign key integrity and compute health score percentage.
+          - **Embedded FastAPI Server**: `python cli.py serve` providing REST API endpoints and interactive Swagger UI (`/docs`).
+          - **CI/CD & Weekly Auto-Scraper**: GitHub Actions pipelines for continuous testing and automated weekly scheduled data harvesting.
+        draft: false
+        prerelease: false
