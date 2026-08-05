@@ -25,6 +25,13 @@ def test_parse_events_page(events_soup):
     assert event.location == "New York City, New York, USA"
 
 
+def test_parse_upcoming_events_page(events_soup):
+    from src.parsers.events import parse_upcoming_events_page
+    events = parse_upcoming_events_page(events_soup)
+    assert len(events) == 1
+    assert events[0].name == "UFC 309: Jones vs. Miocic"
+
+
 def test_parse_event_fights(fights_soup):
     fights = parse_event_fights(fights_soup, event_id="1a50e734bb54861a")
     assert len(fights) == 1

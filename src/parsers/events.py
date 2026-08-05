@@ -1,7 +1,9 @@
 """
 Parser for completed and upcoming UFC events listings.
 
-Target URL: http://www.ufcstats.com/statistics/events/completed?page=all
+Target URLs:
+  - Completed: http://www.ufcstats.com/statistics/events/completed?page=all
+  - Upcoming:  http://www.ufcstats.com/statistics/events/upcoming
 """
 
 import re
@@ -39,7 +41,7 @@ def _parse_date(text: str) -> Optional[date_type]:
 
 def parse_events_page(soup: BeautifulSoup) -> List[Event]:
     """
-    Parses completed events list page and extracts Event objects.
+    Parses completed or upcoming events list page and extracts Event objects.
 
     Args:
         soup: BeautifulSoup parsed HTML object.
@@ -88,3 +90,8 @@ def parse_events_page(soup: BeautifulSoup) -> List[Event]:
 
     logger.info(f"Found events: {len(events)}")
     return events
+
+
+def parse_upcoming_events_page(soup: BeautifulSoup) -> List[Event]:
+    """Alias for parse_events_page for upcoming events."""
+    return parse_events_page(soup)

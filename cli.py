@@ -31,7 +31,7 @@ from src.storage.database import Database
 from src.storage.exporter import Exporter
 from src.storage.ml_dataset import MLDatasetGenerator
 from src.storage.models import Fighter
-from src.parsers.events import parse_events_page, EVENTS_URL
+from src.parsers.events import parse_events_page, parse_upcoming_events_page, EVENTS_URL, UPCOMING_URL
 from src.parsers.fights import parse_event_fights
 from src.parsers.fight_detail import parse_fight_detail
 from src.parsers.fighters import (
@@ -95,13 +95,14 @@ def cli(ctx, db, cache_dir, delay_min, delay_max, verbose):
 @cli.command()
 @click.option("--all", "crawl_all", is_flag=True, help="Full crawl (events + fights + fighters)")
 @click.option("--incremental", is_flag=True, help="Crawl only new entries (skip existing in DB)")
+@click.option("--upcoming", is_flag=True, help="Crawl upcoming scheduled events and fight cards")
 @click.option("--event", "event_name", default=None, help="Crawl specific event by name substring")
 @click.option("--fighters", "only_fighters", is_flag=True, help="Crawl fighter profiles only")
 @click.option("--no-fight-details", is_flag=True, help="Skip detailed fight round statistics")
 @click.option("--no-fighters", is_flag=True, help="Skip crawling full fighter profiles directory")
 @click.option("--limit-events", default=None, type=int, help="Limit number of events to process")
 @click.pass_context
-def crawl(ctx, crawl_all, incremental, event_name, only_fighters, no_fight_details, no_fighters, limit_events):
+def crawl(ctx, crawl_all, incremental, upcoming, event_name, only_fighters, no_fight_details, no_fighters, limit_events):
     """Crawl data from ufcstats.com"""
     obj = ctx.obj
     cache = FileCache(obj["cache_dir"])
@@ -117,6 +118,8 @@ def crawl(ctx, crawl_all, incremental, event_name, only_fighters, no_fight_detai
     try:
         if only_fighters:
             _crawl_fighters(scraper, db, incremental)
+        elif upcoming:
+            _crawl_upcoming_events(scraper, db, no_fight_details)
         elif event_name:
             _crawl_single_event(scraper, db, event_name, no_fight_details)
         elif crawl_all or incremental:
@@ -125,7 +128,7 @@ def crawl(ctx, crawl_all, incremental, event_name, only_fighters, no_fight_detai
                 _crawl_fighters(scraper, db, incremental)
         else:
             click.echo(
-                "Please specify a mode: --all, --incremental, --event <name>, or --fighters\n"
+                "Please specify a mode: --all, --incremental, --upcoming, --event <name>, or --fighters\n"
                 "Use --help for command options."
             )
             return
@@ -238,6 +241,29 @@ def _crawl_single_event(scraper, db, event_name_query, no_fight_details):
         db.upsert_event(event)
         _process_event(scraper, db, event, no_fight_details)
         logger.info(f"[OK] Processed {event.name}")
+
+
+def _crawl_upcoming_events(scraper, db, no_fight_details):
+    """Crawls upcoming scheduled events and fight cards."""
+    logger.info("Fetching upcoming scheduled events listing...")
+    soup = scraper.get_soup(UPCOMING_URL)
+    if not soup:
+        logger.error("Failed to load upcoming events listing")
+        return
+
+    events = parse_upcoming_events_page(soup)
+    if not events:
+        logger.info("No upcoming events found on ufcstats.com")
+        return
+
+    logger.info(f"Found {len(events)} upcoming events:")
+    for e in events:
+        logger.info(f"  - {e.name} ({e.event_date}) - {e.location}")
+
+    for event in events:
+        db.upsert_event(event)
+        _process_event(scraper, db, event, no_fight_details)
+        logger.info(f"[OK] Processed upcoming event {event.name}")
 
 
 def _crawl_fighters(scraper, db, incremental):

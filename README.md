@@ -89,6 +89,9 @@ python cli.py crawl --all
 # Incremental update: fetch only new events and missing fighter profiles
 python cli.py crawl --incremental
 
+# Crawl upcoming scheduled events and fight cards
+python cli.py crawl --upcoming
+
 # Crawl a specific event by name or substring
 python cli.py crawl --event "UFC 309"
 
