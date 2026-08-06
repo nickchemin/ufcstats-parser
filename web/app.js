@@ -4,10 +4,25 @@ document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initFighterSearch();
   initPredictor();
+  initModal();
   loadUpcomingEvents();
   loadFighterDirectory('');
   loadDiagnostics();
 });
+
+function initModal() {
+  const modal = document.getElementById('event-modal');
+  const closeBtn = document.getElementById('modal-close-btn');
+
+  if (closeBtn && modal) {
+    closeBtn.addEventListener('click', () => {
+      modal.classList.add('hidden');
+    });
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.classList.add('hidden');
+    });
+  }
+}
 
 // ------------------------------------------------------------------
 // 1. Navigation Tabs
@@ -220,12 +235,38 @@ async function loadUpcomingEvents() {
 }
 
 async function viewEventCard(eventId) {
+  const modal = document.getElementById('event-modal');
+  const nameEl = document.getElementById('modal-event-name');
+  const listEl = document.getElementById('modal-fights-list');
+
   try {
     const res = await fetch(`/api/v1/events/${eventId}`);
     const data = await res.json();
-    alert(`Event: ${data.name}\nFights count: ${data.fights ? data.fights.length : 0}`);
+    nameEl.textContent = data.name || 'Event Fight Card';
+    listEl.innerHTML = '';
+
+    if (!data.fights || data.fights.length === 0) {
+      listEl.innerHTML = '<div style="color: var(--text-muted); padding: 1rem 0;">No fights listed for this event yet.</div>';
+    } else {
+      for (const f of data.fights) {
+        const row = document.createElement('div');
+        row.className = 'modal-fight-row';
+        row.innerHTML = `
+          <div>
+            <strong style="color: var(--red-accent);">${f.fighter1_name || 'Fighter 1'}</strong> vs 
+            <strong style="color: var(--blue-accent);">${f.fighter2_name || 'Fighter 2'}</strong>
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">${f.weight_class || 'Bout'} ${f.title_fight ? '🏆 Title Fight' : ''}</div>
+          </div>
+          <div style="text-align: right; font-size: 0.85rem; color: var(--gold-accent);">
+            ${f.method ? f.method : (f.outcome ? 'Result: ' + f.outcome : 'Scheduled Matchup')}
+          </div>
+        `;
+        listEl.appendChild(row);
+      }
+    }
+    modal.classList.remove('hidden');
   } catch (err) {
-    console.error(err);
+    console.error('Error loading fight card:', err);
   }
 }
 
