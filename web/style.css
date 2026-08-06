@@ -1,0 +1,498 @@
+/* UFCStats Web Dashboard Stylesheet (Dark Glassmorphism Theme) */
+
+:root {
+  --bg-dark: #090c10;
+  --card-bg: rgba(22, 27, 34, 0.75);
+  --card-border: rgba(255, 255, 255, 0.08);
+  --text-main: #f0f6fc;
+  --text-muted: #8b949e;
+  --red-accent: #e63946;
+  --red-gradient: linear-gradient(135deg, #e63946 0%, #b71c1c 100%);
+  --blue-accent: #0077b6;
+  --blue-gradient: linear-gradient(135deg, #0096c7 0%, #03045e 100%);
+  --gold-accent: #ffb703;
+  --green-success: #2ea44f;
+  --radius-lg: 16px;
+  --radius-md: 10px;
+  --shadow-glow: 0 0 25px rgba(230, 57, 70, 0.3);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Glassmorphism Card Utility */
+.glass-card {
+  background: var(--card-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+/* Header & Nav */
+.app-header {
+  background: rgba(13, 17, 23, 0.9);
+  border-bottom: 1px solid var(--card-border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(12px);
+}
+
+.header-container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.logo-area {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.logo-badge {
+  background: var(--red-gradient);
+  color: #fff;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  font-size: 1.1rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  letter-spacing: 1px;
+}
+
+.logo-text h1 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.logo-text h1 span {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 400;
+}
+
+.nav-tabs {
+  display: flex;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.25rem;
+  border-radius: var(--radius-md);
+}
+
+.tab-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 0.6rem 1.1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tab-btn.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  font-weight: 600;
+}
+
+.status-indicator {
+  font-size: 0.85rem;
+  color: var(--green-success);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  background-color: var(--green-success);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--green-success);
+}
+
+/* Main Container */
+.main-container {
+  max-width: 1280px;
+  width: 100%;
+  margin: 2rem auto;
+  padding: 0 1.5rem;
+  flex: 1;
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.section-header {
+  margin-bottom: 1.5rem;
+}
+
+.section-header h2 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.8rem;
+  margin-bottom: 0.4rem;
+}
+
+.section-header p {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+/* Predictor Tab */
+.predictor-controls {
+  padding: 1.5rem;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.fighter-select-box label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.fighter-select-box input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  color: #fff;
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+  outline: none;
+}
+
+.fighter-select-box input:focus {
+  border-color: var(--blue-accent);
+}
+
+.fighter-dropdown {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  padding: 0.4rem;
+  outline: none;
+  font-size: 0.9rem;
+}
+
+.fighter-dropdown option {
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+}
+
+.vs-badge {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--gold-accent);
+  background: rgba(255, 183, 3, 0.1);
+  border: 1px solid rgba(255, 183, 3, 0.3);
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-bar {
+  margin: 1.5rem 0;
+  text-align: center;
+}
+
+.btn-primary {
+  background: var(--red-gradient);
+  color: #fff;
+  border: none;
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  padding: 0.9rem 2.5rem;
+  border-radius: 30px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+
+}
+
+.btn-primary.glow {
+  box-shadow: var(--shadow-glow);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 35px rgba(230, 57, 70, 0.6);
+}
+
+/* Prediction Results */
+.prediction-area {
+  padding: 2rem;
+  margin-top: 1.5rem;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.corner-info.red { text-align: left; }
+.corner-info.blue { text-align: right; }
+
+.corner-info h3 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.6rem;
+}
+
+.corner-info .nickname {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+.winner-badge-box {
+  text-align: center;
+}
+
+.winner-badge {
+  display: inline-block;
+  background: var(--green-success);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  margin-bottom: 0.4rem;
+}
+
+.confidence {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--gold-accent);
+}
+
+/* Probability Bar */
+.probability-bar-container {
+  margin: 1.5rem 0 2rem;
+}
+
+.prob-labels {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.4rem;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+}
+
+.prob-val.red { color: var(--red-accent); }
+.prob-val.blue { color: var(--blue-accent); }
+
+.prob-track {
+  height: 24px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  border: 1px solid var(--card-border);
+}
+
+.prob-fill {
+  height: 100%;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.prob-fill.red { background: var(--red-gradient); }
+.prob-fill.blue { background: var(--blue-gradient); }
+
+/* Tape Table */
+.comparison-grid h4 {
+  font-family: 'Outfit', sans-serif;
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.tape-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tape-table th, .tape-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--card-border);
+  font-size: 0.95rem;
+}
+
+.tape-table th {
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
+
+.tape-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Cards & Grid Layouts */
+.cards-grid, .fighters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+
+.event-card, .fighter-card {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.event-card h3, .fighter-card h3 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.2rem;
+  margin-bottom: 0.4rem;
+}
+
+.event-meta, .fighter-meta {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+/* Diagnostics Tab */
+.diag-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.diag-card {
+  padding: 1.5rem;
+}
+
+.diag-card h3 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.3rem;
+  margin-bottom: 1rem;
+}
+
+.metrics-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.metric-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.metric-row:last-child { border-bottom: none; }
+
+.metric-row .label { color: var(--text-muted); }
+.metric-row .value { font-weight: 600; color: var(--green-success); }
+
+.search-bar-box {
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.search-bar-box input {
+  width: 100%;
+  padding: 0.8rem 1.2rem;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  color: #fff;
+  font-size: 1rem;
+  outline: none;
+}
+
+.loading-spinner {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 1rem 0;
+}
+
+/* Footer */
+.app-footer {
+  border-top: 1px solid var(--card-border);
+  text-align: center;
+  padding: 1.5rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-top: auto;
+}
+
+/* Responsive Breakpoints */
+@media (max-width: 768px) {
+  .predictor-controls {
+    grid-template-columns: 1fr;
+  }
+  .vs-badge {
+    margin: 0 auto;
+  }
+  .diag-grid {
+    grid-template-columns: 1fr;
+  }
+  .header-container {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

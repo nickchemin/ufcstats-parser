@@ -159,3 +159,18 @@ def test_get_health(client):
     assert res.status_code == 200
     data = res.json()
     assert "health_score_pct" in data
+
+
+def test_predict_fight(client):
+    res = client.get("/api/v1/predict?fighter1_id=f1&fighter2_id=f2")
+    assert res.status_code == 200
+    data = res.json()
+    assert "fighter1_win_probability" in data
+    assert "fighter2_win_probability" in data
+    assert "predicted_winner" in data
+
+
+def test_serve_web_app(client):
+    res = client.get("/app")
+    assert res.status_code == 200
+    assert "UFCStats Analytics & Fight Predictor" in res.text

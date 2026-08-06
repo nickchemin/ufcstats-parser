@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UFCStats Analytics & Fight Predictor</title>
+  <!-- Google Fonts: Inter & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- Header & Top Navigation -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="logo-area">
+        <span class="logo-badge">UFC</span>
+        <div class="logo-text">
+          <h1>UFCStats <span>Predictor & Analytics</span></h1>
+        </div>
+      </div>
+      
+      <nav class="nav-tabs">
+        <button class="tab-btn active" data-tab="predictor">🥊 Fight Predictor</button>
+        <button class="tab-btn" data-tab="upcoming">📅 Upcoming Cards</button>
+        <button class="tab-btn" data-tab="fighters">🔍 Fighter Search</button>
+        <button class="tab-btn" data-tab="system">⚙️ Diagnostics</button>
+      </nav>
+      
+      <div class="status-indicator">
+        <span class="status-dot"></span> REST API Active
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="main-container">
+
+    <!-- Tab 1: Fight Predictor & Matchup Simulator -->
+    <section id="tab-predictor" class="tab-content active">
+      <div class="section-header">
+        <h2>Fight Matchup Simulator</h2>
+        <p>Select two fighters to compute AI win probabilities, comparative physical metrics, and striking/grappling differentials.</p>
+      </div>
+
+      <div class="predictor-controls glass-card">
+        <div class="fighter-select-box">
+          <label>Fighter 1 (Red Corner)</label>
+          <input type="text" id="f1-search" placeholder="Type name (e.g. Jon Jones)..." autocomplete="off">
+          <select id="f1-select" size="4" class="fighter-dropdown"></select>
+        </div>
+
+        <div class="vs-badge">VS</div>
+
+        <div class="fighter-select-box">
+          <label>Fighter 2 (Blue Corner)</label>
+          <input type="text" id="f2-search" placeholder="Type name (e.g. Stipe Miocic)..." autocomplete="off">
+          <select id="f2-select" size="4" class="fighter-dropdown"></select>
+        </div>
+      </div>
+
+      <div class="action-bar">
+        <button id="btn-predict" class="btn-primary glow">⚡ Simulate Fight Matchup</button>
+      </div>
+
+      <!-- Matchup Prediction Results (Hidden by default) -->
+      <div id="prediction-result" class="prediction-area glass-card hidden">
+        <div class="result-header">
+          <div class="corner-info red">
+            <h3 id="res-f1-name">Fighter 1</h3>
+            <span id="res-f1-nickname" class="nickname">""</span>
+          </div>
+
+          <div class="winner-badge-box">
+            <span id="predicted-winner-badge" class="winner-badge">Prediction</span>
+            <span id="confidence-text" class="confidence">Confidence: --%</span>
+          </div>
+
+          <div class="corner-info blue">
+            <h3 id="res-f2-name">Fighter 2</h3>
+            <span id="res-f2-nickname" class="nickname">""</span>
+          </div>
+        </div>
+
+        <!-- Visual Win Probability Gauge Bar -->
+        <div class="probability-bar-container">
+          <div class="prob-labels">
+            <span id="f1-prob-val" class="prob-val red">50%</span>
+            <span id="f2-prob-val" class="prob-val blue">50%</span>
+          </div>
+          <div class="prob-track">
+            <div id="f1-prob-fill" class="prob-fill red" style="width: 50%;"></div>
+            <div id="f2-prob-fill" class="prob-fill blue" style="width: 50%;"></div>
+          </div>
+        </div>
+
+        <!-- Head-to-Head Comparison Table -->
+        <div class="comparison-grid">
+          <h4>Comparative Tale of the Tape</h4>
+          <table class="tape-table">
+            <thead>
+              <tr>
+                <th style="text-align: right;">Fighter 1</th>
+                <th style="text-align: center;">Metric</th>
+                <th style="text-align: left;">Fighter 2</th>
+              </tr>
+            </thead>
+            <tbody id="tape-table-body">
+              <!-- Dynamically populated via Javascript -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 2: Upcoming Cards -->
+    <section id="tab-upcoming" class="tab-content">
+      <div class="section-header">
+        <h2>Upcoming UFC Events & Fight Cards</h2>
+        <p>Explore scheduled fight cards with automatic win predictions for scheduled bouts.</p>
+      </div>
+
+      <div id="upcoming-events-list" class="cards-grid">
+        <div class="loading-spinner">Loading upcoming events...</div>
+      </div>
+    </section>
+
+    <!-- Tab 3: Fighter Directory -->
+    <section id="tab-fighters" class="tab-content">
+      <div class="section-header">
+        <h2>Fighter Bio Directory</h2>
+        <p>Search over 4,000 fighter profiles in the archival database.</p>
+      </div>
+
+      <div class="search-bar-box glass-card">
+        <input type="text" id="dir-search-input" placeholder="Search fighter by first name, last name, or nickname...">
+      </div>
+
+      <div id="fighters-grid" class="fighters-grid">
+        <!-- Dynamically populated -->
+      </div>
+    </section>
+
+    <!-- Tab 4: Diagnostics -->
+    <section id="tab-system" class="tab-content">
+      <div class="section-header">
+        <h2>System Diagnostics & Health</h2>
+        <p>Inspect SQLite database row counts, data quality health score, and disk cache stats.</p>
+      </div>
+
+      <div class="diag-grid">
+        <div class="diag-card glass-card">
+          <h3>Database Metrics</h3>
+          <div id="db-summary-box" class="metrics-list">
+            <div class="loading-spinner">Loading database summary...</div>
+          </div>
+        </div>
+
+        <div class="diag-card glass-card">
+          <h3>Health & Quality Diagnostics</h3>
+          <div id="health-report-box" class="metrics-list">
+            <div class="loading-spinner">Loading diagnostics report...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <p>UFCStats Parser v1.2.0 | High Performance Data Pipeline & ML Engine</p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

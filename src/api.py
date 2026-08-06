@@ -1,15 +1,18 @@
 """
-FastAPI REST API server for UFCStats.
+FastAPI REST API server & Web Dashboard for UFCStats.
 
 Provides HTTP REST endpoints for querying events, fight cards, detailed fight metrics,
-fighter profiles, matchup comparisons, data health diagnostics, and ML matchup datasets.
+fighter profiles, matchup predictions, data health diagnostics, and ML matchup datasets.
 """
 
 import math
+from pathlib import Path
 import sqlite3
 from typing import Optional, List, Dict, Any
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from anyio import to_thread
 
 from .storage.database import Database
@@ -17,14 +20,23 @@ from .storage.checker import DatabaseChecker
 from .storage.ml_dataset import MLDatasetGenerator
 
 app = FastAPI(
-    title="UFCStats REST API",
-    description="High-performance REST API for UFC events, fights, fighter profiles, and ML datasets.",
-    version="1.1.0",
+    title="UFCStats REST API & Web Dashboard",
+    description="High-performance REST API & Interactive Dashboard for UFC events, fights, fighter profiles, and ML prediction.",
+    version="1.2.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
 
 DB_PATH = "ufc_data.db"
+WEB_DIR = Path(__file__).parent.parent / "web"
+
+if WEB_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
+
+    @app.get("/app", tags=["General"])
+    async def serve_web_app():
+        """Serves interactive Web UI Dashboard."""
+        return FileResponse(WEB_DIR / "index.html")
 
 
 def set_db_path(db_path: str):
@@ -43,10 +55,12 @@ def _get_connection(db_path: str = None) -> sqlite3.Connection:
 async def root():
     """API root status endpoint."""
     return {
-        "name": "UFCStats REST API",
-        "version": "1.1.0",
+        "name": "UFCStats REST API & Dashboard",
+        "version": "1.2.0",
+        "web_dashboard": "/app",
         "docs": "/docs",
         "endpoints": [
+            "/app",
             "/api/v1/events",
             "/api/v1/events/upcoming",
             "/api/v1/events/{event_id}",
@@ -54,6 +68,7 @@ async def root():
             "/api/v1/fighters",
             "/api/v1/fighters/{fighter_id}",
             "/api/v1/matchup",
+            "/api/v1/predict",
             "/api/v1/ml-dataset",
             "/api/v1/stats/summary",
             "/api/v1/health",
@@ -261,6 +276,60 @@ async def get_matchup(
 ):
     """Compares two fighters directly and returns physical and career differentials."""
     res = await to_thread.run_sync(_fetch_matchup, fighter1_id, fighter2_id)
+    if not res:
+        raise HTTPException(status_code=404, detail="One or both fighter profiles not found")
+    return res
+
+
+def _predict_matchup(fighter1_id: str, fighter2_id: str):
+    conn = _get_connection()
+    try:
+        f1 = conn.execute("SELECT * FROM fighters WHERE fighter_id = ?", (fighter1_id,)).fetchone()
+        f2 = conn.execute("SELECT * FROM fighters WHERE fighter_id = ?", (fighter2_id,)).fetchone()
+        if not f1 or not f2:
+            return None
+        d1, d2 = dict(f1), dict(f2)
+
+        h1, h2 = d1.get("height_cm"), d2.get("height_cm")
+        r1, r2 = d1.get("reach_cm"), d2.get("reach_cm")
+        ape1 = (r1 - h1) if (r1 and h1) else None
+        ape2 = (r2 - h2) if (r2 and h2) else None
+
+        st1 = (d1.get("stance") or "").strip().lower()
+        st2 = (d2.get("stance") or "").strip().lower()
+
+        feat = {
+            "diff_height_cm": (h1 - h2) if (h1 and h2) else 0.0,
+            "diff_reach_cm": (r1 - r2) if (r1 and r2) else 0.0,
+            "diff_ape_index": (ape1 - ape2) if (ape1 and ape2) else 0.0,
+            "is_same_stance": 1 if (st1 and st2 and st1 == st2) else 0,
+            "is_orthodox_vs_southpaw": 1 if (set([st1, st2]) == {"orthodox", "southpaw"}) else 0,
+            "diff_slpm": (d1.get("slpm") or 0.0) - (d2.get("slpm") or 0.0),
+            "diff_str_acc": (d1.get("str_acc") or 0.0) - (d2.get("str_acc") or 0.0),
+            "diff_sapm": (d1.get("sapm") or 0.0) - (d2.get("sapm") or 0.0),
+            "diff_str_def": (d1.get("str_def") or 0.0) - (d2.get("str_def") or 0.0),
+            "diff_td_avg": (d1.get("td_avg") or 0.0) - (d2.get("td_avg") or 0.0),
+            "diff_td_acc": (d1.get("td_acc") or 0.0) - (d2.get("td_acc") or 0.0),
+            "diff_td_def": (d1.get("td_def") or 0.0) - (d2.get("td_def") or 0.0),
+        }
+
+        from .ml.predictor import FightPredictor
+        predictor = FightPredictor(DB_PATH)
+        prediction = predictor.predict_matchup(feat, {})
+        prediction["fighter1"] = d1
+        prediction["fighter2"] = d2
+        return prediction
+    finally:
+        conn.close()
+
+
+@app.get("/api/v1/predict", tags=["Machine Learning"])
+async def predict_fight(
+    fighter1_id: str = Query(..., description="Fighter 1 ID"),
+    fighter2_id: str = Query(..., description="Fighter 2 ID"),
+):
+    """Predicts win probabilities and matchup outcome between two fighters."""
+    res = await to_thread.run_sync(_predict_matchup, fighter1_id, fighter2_id)
     if not res:
         raise HTTPException(status_code=404, detail="One or both fighter profiles not found")
     return res
