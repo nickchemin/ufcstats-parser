@@ -253,6 +253,14 @@ class Database:
             rows = conn.execute("SELECT fighter_id FROM fighters").fetchall()
             return [r["fighter_id"] for r in rows]
 
+    def get_complete_fighter_ids(self) -> List[str]:
+        """Returns list of fighter IDs whose full bio profiles have been parsed into DB."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT fighter_id FROM fighters WHERE height_cm IS NOT NULL OR slpm IS NOT NULL OR stance IS NOT NULL OR wins IS NOT NULL"
+            ).fetchall()
+            return [r["fighter_id"] for r in rows]
+
     # ------------------------------------------------------------------
     # Fights
     # ------------------------------------------------------------------

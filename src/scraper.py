@@ -236,6 +236,11 @@ class UFCStatsScraper:
 
         for attempt in range(1, self.max_retries + 1):
             try:
+                if self.proxy_manager:
+                    proxy = self.proxy_manager.get_proxy()
+                    if proxy:
+                        self._session.proxies.update({"http": proxy, "https": proxy})
+
                 logger.debug(f"[GET] {url} (attempt {attempt}/{self.max_retries})")
                 response = self._session.get(url, timeout=30)
                 response.raise_for_status()
@@ -418,6 +423,9 @@ class AsyncUFCStatsScraper:
                 except Exception as exc:
                     logger.warning(f"[async error] {url} (attempt {attempt}/{self.max_retries}): {exc}")
                     if attempt < self.max_retries:
+                        if self.proxy_manager and self._client:
+                            await self._client.aclose()
+                            self._client = None
                         await asyncio.sleep(2 ** attempt)
                     else:
                         return None

@@ -51,10 +51,10 @@ class Fighter(BaseModel):
     dob: Optional[date] = Field(default=None, description="Date of birth")
 
     # Record
-    wins: int = 0
-    losses: int = 0
-    draws: int = 0
-    no_contests: int = 0
+    wins: Optional[int] = Field(default=None, description="Total wins")
+    losses: Optional[int] = Field(default=None, description="Total losses")
+    draws: Optional[int] = Field(default=None, description="Total draws")
+    no_contests: Optional[int] = Field(default=None, description="Total no contests")
 
     # Career statistics
     slpm: Optional[float] = Field(default=None, description="Significant Strikes Landed Per Minute")
@@ -73,7 +73,7 @@ class Fighter(BaseModel):
 
     @property
     def record(self) -> str:
-        return f"{self.wins}-{self.losses}-{self.draws}"
+        return f"{self.wins or 0}-{self.losses or 0}-{self.draws or 0}"
 
 Fighter.model_rebuild()
 

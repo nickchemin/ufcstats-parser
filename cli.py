@@ -344,7 +344,7 @@ def _crawl_upcoming_events(scraper, db, no_fight_details):
 def _crawl_fighters(scraper, db, incremental):
     """Crawls all fighter profiles alphabetically."""
     logger.info("Starting fighter profiles crawl...")
-    existing_ids = set(db.get_fighter_ids()) if incremental else set()
+    existing_ids = set(db.get_complete_fighter_ids()) if incremental else set()
 
     all_fighter_stubs = []
 
@@ -510,7 +510,7 @@ async def _async_crawl_upcoming_events(scraper, db, no_fight_details):
 async def _async_crawl_fighters(scraper, db, incremental):
     """Crawls all fighter profiles alphabetically asynchronously in batches."""
     logger.info("Starting fighter profiles crawl (async)...")
-    existing_ids = set(db.get_fighter_ids()) if incremental else set()
+    existing_ids = set(db.get_complete_fighter_ids()) if incremental else set()
 
     all_fighter_stubs = []
     alpha_urls = [FIGHTERS_LIST_URL.format(letter=letter) for letter in ALPHABET]
