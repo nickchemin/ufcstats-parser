@@ -2,10 +2,11 @@
 Machine Learning model trainer, predictor, and model persistence for UFC fight outcomes.
 
 Features:
+- Multi-model Soft-Voting Ensemble (XGBoost + LightGBM + HistGradientBoosting + RandomForest)
 - Temporal out-of-time train/test validation split
 - Dual-pass invariant symmetrization (P(F1) + P(F2) = 1.0, P(F1, F1) = 0.50)
 - Model serialization (save_model / load_model) with pickle & JSON metadata
-- Fallback classifier with explicit warning logging if scikit-learn is not installed
+- Fallback classifier with explicit warning logging if ML libraries are not installed
 """
 
 import json
@@ -18,6 +19,156 @@ from ..storage.ml_dataset import MLDatasetGenerator, FEATURE_COLUMNS
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class EnsemblePredictor:
+    """
+    Soft-voting ML Ensemble combining XGBoost, LightGBM, HistGradientBoosting, and Random Forest.
+    """
+
+    def __init__(self, random_state: int = 42):
+        self.random_state = random_state
+        self.models = []
+        self.weights = []
+        self._init_models()
+
+    def _init_models(self):
+        self.models = []
+        self.weights = []
+
+        # 1. XGBoost
+        try:
+            from xgboost import XGBClassifier
+            xgb = XGBClassifier(
+                n_estimators=120,
+                max_depth=4,
+                learning_rate=0.05,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                random_state=self.random_state,
+                eval_metric="logloss",
+                n_jobs=1,
+            )
+            self.models.append(("xgboost", xgb))
+            self.weights.append(0.35)
+            logger.info("Ensemble member loaded: XGBoost")
+        except Exception as e:
+            logger.debug(f"XGBoost unavailable: {e}")
+
+        # 2. LightGBM
+        try:
+            from lightgbm import LGBMClassifier
+            lgb = LGBMClassifier(
+                n_estimators=120,
+                max_depth=4,
+                learning_rate=0.05,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                random_state=self.random_state,
+                verbose=-1,
+                n_jobs=1,
+            )
+            self.models.append(("lightgbm", lgb))
+            self.weights.append(0.35)
+            logger.info("Ensemble member loaded: LightGBM")
+        except Exception as e:
+            logger.debug(f"LightGBM unavailable: {e}")
+
+        # 3. HistGradientBoosting (scikit-learn)
+        try:
+            from sklearn.ensemble import HistGradientBoostingClassifier
+            hgb = HistGradientBoostingClassifier(
+                max_iter=120,
+                max_depth=4,
+                learning_rate=0.05,
+                random_state=self.random_state,
+            )
+            self.models.append(("hist_gb", hgb))
+            self.weights.append(0.20)
+            logger.info("Ensemble member loaded: HistGradientBoosting")
+        except Exception as e:
+            logger.debug(f"HistGradientBoosting unavailable: {e}")
+
+        # 4. Random Forest (scikit-learn)
+        try:
+            from sklearn.ensemble import RandomForestClassifier
+            rf = RandomForestClassifier(
+                n_estimators=100,
+                max_depth=6,
+                random_state=self.random_state,
+                n_jobs=1,
+            )
+            self.models.append(("random_forest", rf))
+            self.weights.append(0.10)
+            logger.info("Ensemble member loaded: RandomForest")
+        except Exception as e:
+            logger.debug(f"RandomForest unavailable: {e}")
+
+        # Fallback if no ML libraries available
+        if not self.models:
+            logger.warning("[WARNING] No ML frameworks installed! Falling back to _SimpleLogisticRegression.")
+            self.models.append(("simple_lr", _SimpleLogisticRegression(lr=0.01, epochs=300)))
+            self.weights.append(1.0)
+
+        # Normalize weights
+        total_w = sum(self.weights) or 1.0
+        self.weights = [w / total_w for w in self.weights]
+
+    def fit(self, X: List[List[float]], y: List[int]):
+        try:
+            import numpy as np
+            X_data = np.array(X, dtype=np.float32)
+            y_data = np.array(y, dtype=np.int32)
+        except ImportError:
+            X_data = X
+            y_data = y
+
+        for name, model in self.models:
+            try:
+                model.fit(X_data, y_data)
+            except Exception as e:
+                logger.warning(f"Failed to fit ensemble model {name}: {e}")
+
+    def predict_proba(self, X: List[List[float]]) -> List[float]:
+        if not X:
+            return []
+
+        try:
+            import numpy as np
+            X_data = np.array(X, dtype=np.float32)
+            has_numpy = True
+        except ImportError:
+            X_data = X
+            has_numpy = False
+
+        if has_numpy:
+            import numpy as np
+            ensemble_probs = np.zeros(len(X), dtype=np.float64)
+            active_weight = 0.0
+
+            for (name, model), w in zip(self.models, self.weights):
+                try:
+                    if hasattr(model, "predict_proba"):
+                        probs = model.predict_proba(X_data)
+                        if hasattr(probs, "ndim") and probs.ndim > 1 and probs.shape[1] > 1:
+                            p1 = probs[:, 1]
+                        else:
+                            p1 = probs
+                        ensemble_probs += w * p1
+                        active_weight += w
+                except Exception as e:
+                    logger.warning(f"Failed predict_proba for ensemble model {name}: {e}")
+
+            if active_weight > 0:
+                ensemble_probs /= active_weight
+            else:
+                ensemble_probs = np.full(len(X), 0.5)
+
+            return ensemble_probs.tolist()
+        else:
+            if self.models and hasattr(self.models[0][1], "predict_proba"):
+                return self.models[0][1].predict_proba(X)
+            return [0.5] * len(X)
 
 
 class FightPredictor:
@@ -106,7 +257,7 @@ class FightPredictor:
 
     def train(self, test_size: float = 0.2) -> Dict[str, Any]:
         """
-        Trains model using temporal train/test split and computes evaluation metrics.
+        Trains Ensemble model using temporal train/test split and computes evaluation metrics.
         """
         X_train, y_train, X_test, y_test = self.prepare_dataset(test_size=test_size)
 
@@ -126,26 +277,14 @@ class FightPredictor:
         X_train_scaled = self._scale_matrix(X_train)
         X_test_scaled = self._scale_matrix(X_test)
 
-        # Train model: try Gradient Boosting / Logistic Regression
-        try:
-            from sklearn.ensemble import HistGradientBoostingClassifier
-            self.model = HistGradientBoostingClassifier(max_iter=100, random_state=42)
-            self.model.fit(X_train_scaled, y_train)
-            logger.info("Trained model using scikit-learn HistGradientBoostingClassifier")
-
-            if hasattr(self.model, "feature_importances_"):
-                imp = self.model.feature_importances_
-            else:
-                imp = [abs(self._pearson_corr([row[i] for row in X_train_scaled], y_train)) for i in range(n_features)]
-
-        except ImportError:
-            logger.warning("[WARNING] scikit-learn is not installed! Falling back to lightweight _SimpleLogisticRegression classifier.")
-            self.model = _SimpleLogisticRegression(lr=0.01, epochs=300)
-            self.model.fit(X_train_scaled, y_train)
-            imp = [abs(w) for w in self.model.weights]
+        # Train Ensemble Predictor
+        self.model = EnsemblePredictor(random_state=42)
+        self.model.fit(X_train_scaled, y_train)
 
         self.is_trained = True
 
+        # Extract feature importances by Pearson correlation with target
+        imp = [abs(self._pearson_corr([row[i] for row in X_train_scaled], y_train)) for i in range(n_features)]
         total_imp = sum(imp) or 1.0
         self.feature_importances = {
             col: round(imp[i] / total_imp, 4) for i, col in enumerate(self.feature_columns)
@@ -162,7 +301,7 @@ class FightPredictor:
         metrics["top_features"] = dict(sorted_imp)
 
         logger.info(
-            f"Model trained cleanly. Test Accuracy: {metrics['accuracy']}%, ROC-AUC: {metrics['roc_auc']}"
+            f"Ensemble Model trained cleanly. Test Accuracy: {metrics['accuracy']}%, ROC-AUC: {metrics['roc_auc']}"
         )
         return metrics
 

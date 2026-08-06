@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ufcstats-parser"
-version = "1.3.0"
-description = "High performance UFC dataset parser, REST API, and ML Fight Outcome Predictor"
+version = "1.4.0"
+description = "High performance UFC dataset parser, REST API, and ML Ensemble Fight Outcome Predictor"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
@@ -21,6 +21,8 @@ dependencies = [
     "uvicorn>=0.27.0",
     "httpx>=0.23.0",
     "scikit-learn>=1.3.0",
+    "xgboost>=2.0.0",
+    "lightgbm>=4.0.0",
 ]
 
 [tool.pytest.ini_options]

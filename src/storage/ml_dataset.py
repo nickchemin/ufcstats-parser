@@ -45,6 +45,7 @@ FEATURE_COLUMNS = [
     "diff_weight_kg",
     "diff_reach_cm",
     "diff_ape_index",
+    "diff_reach_ratio",
     "diff_age_years",
     "is_same_stance",
     "is_orthodox_vs_southpaw",
@@ -52,9 +53,11 @@ FEATURE_COLUMNS = [
     "pre_f2_ufc_debut",
     "diff_pre_wins",
     "diff_pre_losses",
+    "diff_pre_total_fights",
     "diff_pre_win_rate",
     "diff_pre_ko_win_rate",
     "diff_pre_sub_win_rate",
+    "diff_pre_finish_win_rate",
     "diff_pre_dec_win_rate",
     "diff_pre_streak",
     "diff_pre_days_since_last_fight",
@@ -62,6 +65,7 @@ FEATURE_COLUMNS = [
     "diff_slpm",
     "diff_str_acc",
     "diff_sapm",
+    "diff_strike_efficiency",
     "diff_str_def",
     "diff_td_avg",
     "diff_td_acc",
@@ -235,19 +239,27 @@ class MLDatasetGenerator:
                 f1_slpm, f1_str_acc, f1_sapm, f1_str_def, f1_td_avg, f1_td_acc, f1_td_def = compute_pre_stats(t1)
                 f2_slpm, f2_str_acc, f2_sapm, f2_str_def, f2_td_avg, f2_td_acc, f2_td_def = compute_pre_stats(t2)
 
-                # Physical ape index & stance flags
+                # Physical ape index, reach ratio & stance flags
                 f1_reach = f1.get("reach_cm")
                 f1_height = f1.get("height_cm")
                 f1_ape_index = round(f1_reach - f1_height, 1) if (f1_reach is not None and f1_height is not None) else None
+                f1_reach_ratio = round(f1_reach / f1_height, 3) if (f1_reach and f1_height and f1_height > 0) else None
 
                 f2_reach = f2.get("reach_cm")
                 f2_height = f2.get("height_cm")
                 f2_ape_index = round(f2_reach - f2_height, 1) if (f2_reach is not None and f2_height is not None) else None
+                f2_reach_ratio = round(f2_reach / f2_height, 3) if (f2_reach and f2_height and f2_height > 0) else None
 
                 st1 = (f1.get("stance") or "").strip().lower()
                 st2 = (f2.get("stance") or "").strip().lower()
                 is_same_stance = 1 if (st1 and st2 and st1 == st2) else 0
                 is_orthodox_vs_southpaw = 1 if (set([st1, st2]) == {"orthodox", "southpaw"}) else 0
+
+                pre_f1_finish_win_rate = round((t1["ko_wins"] + t1["sub_wins"]) / pre_f1_wins, 3) if pre_f1_wins > 0 else None
+                pre_f2_finish_win_rate = round((t2["ko_wins"] + t2["sub_wins"]) / pre_f2_wins, 3) if pre_f2_wins > 0 else None
+
+                f1_strike_eff = round(f1_slpm / (f1_sapm + 0.1), 2) if (f1_slpm is not None and f1_sapm is not None) else None
+                f2_strike_eff = round(f2_slpm / (f2_sapm + 0.1), 2) if (f2_slpm is not None and f2_sapm is not None) else None
 
                 feature_row = {
                     # Context & Identifiers
@@ -292,6 +304,10 @@ class MLDatasetGenerator:
                     "f2_ape_index": f2_ape_index,
                     "diff_ape_index": _safe_sub(f1_ape_index, f2_ape_index),
 
+                    "f1_reach_ratio": f1_reach_ratio,
+                    "f2_reach_ratio": f2_reach_ratio,
+                    "diff_reach_ratio": _safe_sub(f1_reach_ratio, f2_reach_ratio, 3),
+
                     "f1_age": f1_age,
                     "f2_age": f2_age,
                     "diff_age_years": _safe_sub(f1_age, f2_age),
@@ -313,6 +329,10 @@ class MLDatasetGenerator:
                     "pre_f2_losses": pre_f2_losses,
                     "diff_pre_losses": pre_f1_losses - pre_f2_losses,
 
+                    "pre_f1_total_fights": pre_f1_total,
+                    "pre_f2_total_fights": pre_f2_total,
+                    "diff_pre_total_fights": pre_f1_total - pre_f2_total,
+
                     "pre_f1_win_rate": pre_f1_win_rate,
                     "pre_f2_win_rate": pre_f2_win_rate,
                     "diff_pre_win_rate": _safe_sub(pre_f1_win_rate, pre_f2_win_rate, 3),
@@ -324,6 +344,10 @@ class MLDatasetGenerator:
                     "pre_f1_sub_win_rate": pre_f1_sub_win_rate,
                     "pre_f2_sub_win_rate": pre_f2_sub_win_rate,
                     "diff_pre_sub_win_rate": _safe_sub(pre_f1_sub_win_rate, pre_f2_sub_win_rate, 3),
+
+                    "pre_f1_finish_win_rate": pre_f1_finish_win_rate,
+                    "pre_f2_finish_win_rate": pre_f2_finish_win_rate,
+                    "diff_pre_finish_win_rate": _safe_sub(pre_f1_finish_win_rate, pre_f2_finish_win_rate, 3),
 
                     "pre_f1_dec_win_rate": pre_f1_dec_win_rate,
                     "pre_f2_dec_win_rate": pre_f2_dec_win_rate,
@@ -353,6 +377,10 @@ class MLDatasetGenerator:
                     "f1_sapm": f1_sapm,
                     "f2_sapm": f2_sapm,
                     "diff_sapm": _safe_sub(f1_sapm, f2_sapm),
+
+                    "f1_strike_efficiency": f1_strike_eff,
+                    "f2_strike_efficiency": f2_strike_eff,
+                    "diff_strike_efficiency": _safe_sub(f1_strike_eff, f2_strike_eff),
 
                     "f1_str_def": f1_str_def,
                     "f2_str_def": f2_str_def,
