@@ -39,3 +39,13 @@ def test_crawl_all_events_incremental_early_stopping():
         assert mock_process_event.call_count == 1
         processed_event = mock_process_event.call_args[0][2]
         assert processed_event.event_id == "evt_0"
+
+
+def test_cli_async_crawl(tmp_path):
+    db_file = tmp_path / "cli_async_test.db"
+    runner = CliRunner()
+
+    with patch("cli._async_crawl_all_events") as mock_async_crawl:
+        result = runner.invoke(cli, ["--db", str(db_file), "crawl", "--all", "--async", "--limit-events", "1"])
+        assert result.exit_code == 0
+        assert mock_async_crawl.called

@@ -141,6 +141,31 @@ class FileCache:
         logger.info(f"Cache cleared: {count} files removed")
         return count
 
+    def get_cookie(self, name: str) -> Optional[str]:
+        """Retrieves a cached cookie value if not expired."""
+        cookie_path = self.cache_dir / f"cookie_{name}.json"
+        if not cookie_path.exists():
+            return None
+        try:
+            data = json.loads(cookie_path.read_text(encoding="utf-8"))
+            if time.time() < data.get("expires_at", 0):
+                return data.get("value")
+            else:
+                cookie_path.unlink()
+                return None
+        except Exception:
+            return None
+
+    def set_cookie(self, name: str, value: str, ttl_days: int = 7) -> None:
+        """Saves a cookie value with expiration time in days."""
+        cookie_path = self.cache_dir / f"cookie_{name}.json"
+        try:
+            expires_at = time.time() + (ttl_days * 86400)
+            data = {"name": name, "value": value, "expires_at": expires_at}
+            cookie_path.write_text(json.dumps(data), encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"Failed to save cached cookie {name}: {e}")
+
     def stats(self) -> dict:
         """Returns cache usage statistics."""
         html_files = list(self.cache_dir.glob("*.html"))

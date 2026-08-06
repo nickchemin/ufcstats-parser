@@ -168,14 +168,19 @@ def test_pre_fight_rolling_stats(tmp_path):
     assert row1["pre_f1_ufc_debut"] == 1
     assert row1["pre_f1_wins"] == 0
     assert row1["pre_f1_streak"] == 0
+    assert row1["pre_f1_elo"] == 1500.0
+    assert row1["pre_f2_elo"] == 1500.0
 
-    # Fight 2: F1 has 1 prior win, streak +1; F2 has 1 prior loss, streak -1
+    # Fight 2: F1 has 1 prior win (KO/TKO), streak +1, ELO increased; F2 has 1 prior loss, streak -1, ELO decreased
     assert row2["fight_id"] == "fight2"
     assert row2["pre_f1_ufc_debut"] == 0
     assert row2["pre_f1_wins"] == 1
     assert row2["pre_f1_streak"] == 1
+    assert row2["pre_f1_ko_win_rate"] == 1.0
+    assert row2["pre_f1_elo"] > 1500.0
     assert row2["pre_f2_losses"] == 1
     assert row2["pre_f2_streak"] == -1
+    assert row2["pre_f2_elo"] < 1500.0
     assert row2["pre_f1_days_since_last_fight"] == 152  # Days between Jan 1 and June 1 2020
 
 

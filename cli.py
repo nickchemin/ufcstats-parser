@@ -141,44 +141,68 @@ def crawl(ctx, crawl_all, incremental, upcoming, event_name, only_fighters, no_f
 
     start_time = time.time()
 
-    try:
-        if only_fighters:
-            _crawl_fighters(scraper, db, incremental)
-        elif upcoming:
-            _crawl_upcoming_events(scraper, db, no_fight_details)
-        elif event_name:
-            _crawl_single_event(scraper, db, event_name, no_fight_details)
-        elif crawl_all or incremental:
-            _crawl_all_events(scraper, db, incremental, no_fight_details, limit_events)
-            if not no_fighters and limit_events is None:
+    if use_async:
+        import asyncio
+
+        async def _run_async_crawl():
+            try:
+                if only_fighters:
+                    await _async_crawl_fighters(scraper, db, incremental)
+                elif upcoming:
+                    await _async_crawl_upcoming_events(scraper, db, no_fight_details)
+                elif event_name:
+                    await _async_crawl_single_event(scraper, db, event_name, no_fight_details)
+                elif crawl_all or incremental:
+                    await _async_crawl_all_events(scraper, db, incremental, no_fight_details, limit_events)
+                    if not no_fighters and limit_events is None:
+                        await _async_crawl_fighters(scraper, db, incremental)
+                else:
+                    click.echo(
+                        "Please specify a mode: --all, --incremental, --upcoming, --event <name>, or --fighters\n"
+                        "Use --help for command options."
+                    )
+            finally:
+                await scraper.close()
+
+        asyncio.run(_run_async_crawl())
+    else:
+        try:
+            if only_fighters:
                 _crawl_fighters(scraper, db, incremental)
-        else:
-            click.echo(
-                "Please specify a mode: --all, --incremental, --upcoming, --event <name>, or --fighters\n"
-                "Use --help for command options."
-            )
-            return
+            elif upcoming:
+                _crawl_upcoming_events(scraper, db, no_fight_details)
+            elif event_name:
+                _crawl_single_event(scraper, db, event_name, no_fight_details)
+            elif crawl_all or incremental:
+                _crawl_all_events(scraper, db, incremental, no_fight_details, limit_events)
+                if not no_fighters and limit_events is None:
+                    _crawl_fighters(scraper, db, incremental)
+            else:
+                click.echo(
+                    "Please specify a mode: --all, --incremental, --upcoming, --event <name>, or --fighters\n"
+                    "Use --help for command options."
+                )
+        finally:
+            scraper.close()
 
-    finally:
-        scraper.close()
-        elapsed = time.time() - start_time
-        summary = db.summary()
-        cache_stats = cache.stats()
+    elapsed = time.time() - start_time
+    summary = db.summary()
+    cache_stats = cache.stats()
 
-        table = Table(title="Crawl Summary", box=box.ROUNDED, style="cyan")
-        table.add_column("Metric", style="bold white")
-        table.add_column("Value", style="bold green")
+    table = Table(title="Crawl Summary", box=box.ROUNDED, style="cyan")
+    table.add_column("Metric", style="bold white")
+    table.add_column("Value", style="bold green")
 
-        table.add_row("Events in DB", str(summary["events"]))
-        table.add_row("Fights in DB", str(summary["fights"]))
-        table.add_row("Fighters in DB", str(summary["fighters"]))
-        table.add_row("Round Stats Rows", str(summary["round_stats_rows"]))
-        table.add_row("Cache Hits", f"{cache_stats['hits']}")
-        table.add_row("Cache Misses", f"{cache_stats['misses']}")
-        table.add_row("Cache Size", f"{cache_stats['size_mb']} MB")
-        table.add_row("Elapsed Time", f"{elapsed:.1f}s")
+    table.add_row("Events in DB", str(summary["events"]))
+    table.add_row("Fights in DB", str(summary["fights"]))
+    table.add_row("Fighters in DB", str(summary["fighters"]))
+    table.add_row("Round Stats Rows", str(summary["round_stats_rows"]))
+    table.add_row("Cache Hits", f"{cache_stats['hits']}")
+    table.add_row("Cache Misses", f"{cache_stats['misses']}")
+    table.add_row("Cache Size", f"{cache_stats['size_mb']} MB")
+    table.add_row("Elapsed Time", f"{elapsed:.1f}s")
 
-        rich_console.print(table)
+    rich_console.print(table)
 
 
 def _crawl_all_events(scraper, db, incremental, no_fight_details, limit_events):
@@ -358,6 +382,164 @@ def _crawl_fighters(scraper, db, incremental):
                 if fighter:
                     db.upsert_fighter(fighter)
             progress.advance(task)
+
+
+async def _async_crawl_all_events(scraper, db, incremental, no_fight_details, limit_events):
+    """Crawls all events and their fights asynchronously."""
+    logger.info("Fetching events listing (async)...")
+    soup = await scraper.get_soup(EVENTS_URL)
+    if not soup:
+        logger.error("Failed to fetch events listing")
+        return
+
+    events = parse_events_page(soup)
+    if not events:
+        logger.error("No events found")
+        return
+
+    if limit_events:
+        events = events[:limit_events]
+        logger.info(f"Limiting crawl to {limit_events} events")
+
+    existing_event_ids = set(db.get_event_ids()) if incremental else set()
+    if incremental and existing_event_ids:
+        logger.info(f"Incremental crawl active. {len(existing_event_ids)} existing events found in database.")
+
+    for event in events:
+        db.upsert_event(event)
+
+    consecutive_existing = 0
+    with make_progress() as progress:
+        task = progress.add_task("Processing events (async)", total=len(events))
+
+        for event in events:
+            progress.update(task, description=f"[cyan]{event.name[:40]}...")
+
+            if incremental and event.event_id in existing_event_ids:
+                consecutive_existing += 1
+                progress.advance(task)
+                if consecutive_existing >= 5:
+                    logger.info("Reached 5 consecutive existing events in DB; stopping incremental crawl early.")
+                    progress.update(task, completed=len(events))
+                    break
+                continue
+
+            consecutive_existing = 0
+            await _async_process_event(scraper, db, event, no_fight_details)
+            progress.advance(task)
+
+
+async def _async_process_event(scraper, db, event, no_fight_details):
+    """Processes a single event asynchronously: parses fights list and fight details in batches."""
+    soup = await scraper.get_soup(event.url)
+    if not soup:
+        logger.warning(f"[{event.name}] Failed to load event page")
+        return
+
+    fights = parse_event_fights(soup, event.event_id)
+    event.fights_count = len(fights)
+    db.upsert_event(event)
+
+    for fight in fights:
+        db.upsert_fight(fight)
+
+        for fid, fname in [(fight.fighter1_id, fight.fighter1_name), (fight.fighter2_id, fight.fighter2_name)]:
+            if fid:
+                parts = fname.split() if fname else ["Fighter", fid[:4]]
+                first_name = parts[0]
+                last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
+                db.upsert_fighter(Fighter(
+                    fighter_id=fid,
+                    url=f"http://www.ufcstats.com/fighter-details/{fid}",
+                    first_name=first_name,
+                    last_name=last_name,
+                ))
+
+    if not no_fight_details and fights:
+        fight_urls = [fight.url for fight in fights]
+        fight_soups = await scraper.get_soups_batch(fight_urls)
+        for fight, fight_soup in zip(fights, fight_soups):
+            if fight_soup:
+                totals, rounds = parse_fight_detail(fight_soup, fight.fight_id)
+                for stat in totals:
+                    db.upsert_fight_stats(stat)
+                for rnd in rounds:
+                    db.upsert_round_stats(rnd)
+
+
+async def _async_crawl_single_event(scraper, db, event_name_query, no_fight_details):
+    """Crawls specific events matching name query asynchronously."""
+    logger.info(f"Searching for event matching: '{event_name_query}' (async)")
+    soup = await scraper.get_soup(EVENTS_URL)
+    if not soup:
+        logger.error("Failed to load events listing")
+        return
+
+    events = parse_events_page(soup)
+    matching = [e for e in events if event_name_query.lower() in e.name.lower()]
+
+    if not matching:
+        logger.error(f"No events found matching '{event_name_query}'")
+        return
+
+    for event in matching:
+        db.upsert_event(event)
+        await _async_process_event(scraper, db, event, no_fight_details)
+        logger.info(f"[OK] Processed {event.name}")
+
+
+async def _async_crawl_upcoming_events(scraper, db, no_fight_details):
+    """Crawls upcoming scheduled events asynchronously."""
+    logger.info("Fetching upcoming scheduled events listing (async)...")
+    soup = await scraper.get_soup(UPCOMING_URL)
+    if not soup:
+        logger.error("Failed to load upcoming events listing")
+        return
+
+    events = parse_upcoming_events_page(soup)
+    if not events:
+        logger.info("No upcoming events found on ufcstats.com")
+        return
+
+    for event in events:
+        db.upsert_event(event)
+        await _async_process_event(scraper, db, event, no_fight_details)
+        logger.info(f"[OK] Processed upcoming event {event.name}")
+
+
+async def _async_crawl_fighters(scraper, db, incremental):
+    """Crawls all fighter profiles alphabetically asynchronously in batches."""
+    logger.info("Starting fighter profiles crawl (async)...")
+    existing_ids = set(db.get_fighter_ids()) if incremental else set()
+
+    all_fighter_stubs = []
+    alpha_urls = [FIGHTERS_LIST_URL.format(letter=letter) for letter in ALPHABET]
+    alpha_soups = await scraper.get_soups_batch(alpha_urls)
+    for soup in alpha_soups:
+        if soup:
+            stubs = parse_fighters_list(soup)
+            all_fighter_stubs.extend(stubs)
+
+    logger.info(f"Total fighters listed: {len(all_fighter_stubs)}")
+    if incremental:
+        new_stubs = [s for s in all_fighter_stubs if s["fighter_id"] not in existing_ids]
+        logger.info(f"New fighters to crawl: {len(new_stubs)}")
+    else:
+        new_stubs = all_fighter_stubs
+
+    batch_size = 20
+    with make_progress() as progress:
+        task = progress.add_task("Parsing fighter profiles (async)", total=len(new_stubs))
+        for i in range(0, len(new_stubs), batch_size):
+            batch = new_stubs[i:i + batch_size]
+            urls = [s["url"] for s in batch]
+            soups = await scraper.get_soups_batch(urls)
+            for stub, soup in zip(batch, soups):
+                if soup:
+                    fighter = parse_fighter_profile(soup, stub["fighter_id"], stub["url"])
+                    if fighter:
+                        db.upsert_fighter(fighter)
+                progress.advance(task)
 
 
 # ------------------------------------------------------------------

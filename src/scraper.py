@@ -142,6 +142,11 @@ class UFCStatsScraper:
             if proxy:
                 s.proxies.update({"http": proxy, "https": proxy})
                 logger.info(f"Using proxy for session: {proxy}")
+        if self.cache:
+            cached_cookie = self.cache.get_cookie("_fmc")
+            if cached_cookie:
+                s.cookies.set("_fmc", cached_cookie, domain="www.ufcstats.com")
+                logger.info("Loaded cached _fmc cookie for session")
         return s
 
     def _solve_challenge(self, url: str) -> bool:
@@ -185,6 +190,8 @@ class UFCStatsScraper:
                 cookie = self._session.cookies.get("_fmc")
                 if cookie:
                     logger.info(f"PoW passed! Obtained _fmc cookie ({r2.status_code})")
+                    if self.cache:
+                        self.cache.set_cookie("_fmc", cookie)
                     self._challenge_solved = True
                     return True
                 else:
@@ -327,6 +334,11 @@ class AsyncUFCStatsScraper:
                 kwargs["proxy"] = proxy
                 logger.info(f"Async client configured with proxy: {proxy}")
             self._client = httpx.AsyncClient(**kwargs)
+            if self.cache:
+                cached_cookie = self.cache.get_cookie("_fmc")
+                if cached_cookie:
+                    self._client.cookies.set("_fmc", cached_cookie)
+                    logger.info("Loaded cached _fmc cookie for async client")
         return self._client
 
     async def _solve_challenge(self, url: str) -> bool:
@@ -353,13 +365,12 @@ class AsyncUFCStatsScraper:
             )
 
             if r2.status_code in (204, 200, 302):
-                if "_fmc" in client.cookies:
-                    logger.info("Async PoW passed! Obtained _fmc cookie")
-                    self._challenge_solved = True
-                    return True
-                else:
-                    self._challenge_solved = True
-                    return True
+                cookie = client.cookies.get("_fmc")
+                if cookie and self.cache:
+                    self.cache.set_cookie("_fmc", cookie)
+                logger.info("Async PoW passed! Obtained _fmc cookie")
+                self._challenge_solved = True
+                return True
             return False
         except Exception as e:
             logger.error(f"Error solving async PoW: {e}")

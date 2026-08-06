@@ -20,7 +20,9 @@ Designed for data scientists, sports analysts, and developers building MMA analy
 - [CLI Command Reference](#cli-command-reference)
   - [Crawling Data](#1-crawling-data)
   - [Exporting Data](#2-exporting-data)
-  - [Database & Cache Utilities](#3-database--cache-utilities)
+  - [Machine Learning Dataset Transformation](#3-machine-learning-dataset-transformation)
+  - [REST API Server](#4-rest-api-server)
+  - [Database & Cache Utilities](#5-database--cache-utilities)
 - [Database Schema & Architecture](#database-schema--architecture)
 - [Technical Highlights](#technical-highlights)
 - [Project Structure](#project-structure)
@@ -31,14 +33,14 @@ Designed for data scientists, sports analysts, and developers building MMA analy
 ## Key Features
 
 - **Full Data Coverage**: Scrapes all completed UFC events, individual fight results, granular round-by-round striking & grappling metrics, and complete fighter career profiles.
-- **High-Performance Async Engine**: Native `httpx` + `asyncio` parallel scraper (`--async`) with `asyncio.Semaphore` rate limiting for 5x–8x faster batch harvesting.
+- **High-Performance Async Engine**: Native `httpx` + `asyncio` batch parallel scraper (`--async`) with `asyncio.Semaphore` rate limiting for 5x–8x faster batch harvesting.
 - **Proxy Rotation Support**: IP rotation via `--proxy` or `--proxy-file` to bypass IP blocks during full historical crawls.
-- **Custom Proof-of-Work Bypass**: Natively solves ufcstats.com's custom SHA-256 client challenge in sync/async modes without requiring browser automation (Selenium/Playwright).
+- **Custom Proof-of-Work Bypass & Persistent Cookie Cache**: Natively solves ufcstats.com's custom SHA-256 client challenge in sync/async modes and caches authentication cookies (`_fmc`) to disk across sessions.
+- **Advanced ML Feature Engineering**: Chronological pre-fight **ELO rating calculations**, **Ape Index**, **Stance Matchup Indicators** (Orthodox vs Southpaw), and **pre-fight finish ratios** (% KO/Sub/Dec) with strict zero data leakage.
 - **Two-Tier RAM & Disk Caching**: In-memory LRU cache + file-based disk cache with configurable TTLs to eliminate redundant requests.
 - **Incremental Updates**: Detects existing database records with early-stopping to only fetch newly completed events or newly listed fighters.
 - **Relational Storage & Export**: Saves directly into a structured **SQLite** database (`WAL` mode) and exports to **JSON**, **CSV**, **Parquet**, and **Excel** files.
-- **Adaptive Throttling**: Intelligent rate limiting with randomized delay intervals and automatic session backoff.
-- **Rich Terminal UI**: Live progress indicators, colored logs, and formatted data tables powered by `rich` and `click`.
+- **Enhanced FastAPI REST API**: Asynchronous REST server with structured pagination metadata, matchup comparison endpoint (`/api/v1/matchup`), upcoming cards, and interactive Swagger UI.
 
 ---
 
@@ -80,6 +82,12 @@ Export the collected data to CSV and JSON formats:
 
 ```bash
 python cli.py export --format all --output ./data/
+```
+
+Generate the ML matchup dataset with pre-fight ELO ratings:
+
+```bash
+python cli.py transform --format csv --output ./data/ml_dataset.csv
 ```
 
 Check your database status:
@@ -146,7 +154,7 @@ python cli.py export --format excel --output ./data/
 
 ### 3. Machine Learning Dataset Transformation
 
-The `transform` command generates a flat dataset comparing Fighter 1 vs Fighter 2 with calculated physical, record, striking, and grappling feature differentials for predictive modeling.
+The `transform` command generates a flat dataset comparing Fighter 1 vs Fighter 2 with calculated physical, ELO rating, record, striking, and grappling feature differentials for predictive modeling.
 
 ```bash
 # Generate ML dataset in CSV format
@@ -161,7 +169,7 @@ python cli.py transform --format excel --output ./data/ml_dataset.xlsx
 
 ### 4. REST API Server
 
-The `serve` command launches an embedded FastAPI REST server providing HTTP endpoints for events, fights, fighter profiles, ML datasets, and health metrics with interactive Swagger UI.
+The `serve` command launches an embedded FastAPI REST server providing HTTP endpoints for events, fights, fighter profiles, matchup comparisons, ML datasets, and health metrics with interactive Swagger UI.
 
 ```bash
 # Start REST API server at http://127.0.0.1:8000 (Swagger docs at http://127.0.0.1:8000/docs)
@@ -255,23 +263,19 @@ The database is built on SQLite using normalized relational tables with `ON CONF
 
 ## Technical Highlights
 
-### Proof-of-Work Challenge Bypass
+### Proof-of-Work Challenge Bypass & Cookie Cache
 
 Unlike standard Cloudflare setups, `ufcstats.com` serves an inline client-side SHA-256 challenge page. The `UFCStatsScraper` engine automatically:
 1. Detects challenge pages and extracts the `nonce` and required difficulty level.
 2. Computes the valid SHA-256 hash iteration (`n`).
 3. Submits a verification `POST` request to `/__c` to receive the session authentication cookie (`_fmc`).
-4. Reuses cookie authentication across all subsequent HTTP requests.
+4. Persists the authentication cookie to disk cache (`cookie__fmc.json`) valid for 7 days to eliminate challenge solving overhead across multiple CLI invocations.
 
-### Performance & Throttling
+### Machine Learning Feature Pipeline
 
-- **Thread-safe Rate Limiting**: Randomizes delay intervals between 1.5s–3.5s with extended cool-down pauses every 50 requests.
-- **WAL Journaling Mode**: SQLite is initialized with `PRAGMA journal_mode=WAL` for concurrent read/write performance.
-
-### Automated Weekly Scraper (CI/CD)
-
-- Includes a GitHub Actions workflow (`.github/workflows/weekly_scraper.yml`) running every Monday at 00:00 UTC.
-- Automatically crawls newly completed events, upcoming cards, generates the ML dataset, and uploads the SQLite database & CSV/JSON datasets as downloadable GitHub Action Artifacts.
+- **Chronological Pre-Fight ELO Ratings**: Dynamically calculates opponent-adjusted ELO ratings (`pre_f1_elo`, `pre_f2_elo`, `diff_pre_elo`) prior to each fight without forward data leakage.
+- **Physical & Stance Indicators**: Calculates Ape Index (`reach_cm - height_cm`), Stance Same-Flag, and Orthodox vs Southpaw indicators.
+- **Pre-Fight Finish Ratios**: Tracks pre-fight KO/TKO, Submission, and Decision win ratios.
 
 ---
 

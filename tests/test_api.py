@@ -25,8 +25,8 @@ def api_test_db(tmp_path):
     )
     db.upsert_event(event)
 
-    f1 = Fighter(fighter_id="f1", url="http://example.com/f1", first_name="Jon", last_name="Jones")
-    f2 = Fighter(fighter_id="f2", url="http://example.com/f2", first_name="Stipe", last_name="Miocic")
+    f1 = Fighter(fighter_id="f1", url="http://example.com/f1", first_name="Jon", last_name="Jones", height_cm=193.0, reach_cm=215.0)
+    f2 = Fighter(fighter_id="f2", url="http://example.com/f2", first_name="Stipe", last_name="Miocic", height_cm=193.0, reach_cm=203.0)
     db.upsert_fighter(f1)
     db.upsert_fighter(f2)
 
@@ -74,8 +74,16 @@ def test_get_events(client):
     res = client.get("/api/v1/events")
     assert res.status_code == 200
     data = res.json()
-    assert len(data) == 1
-    assert data[0]["event_id"] == "e1"
+    assert data["total"] == 1
+    assert len(data["data"]) == 1
+    assert data["data"][0]["event_id"] == "e1"
+
+
+def test_get_upcoming_events(client):
+    res = client.get("/api/v1/events/upcoming")
+    assert res.status_code == 200
+    data = res.json()
+    assert isinstance(data, list)
 
 
 def test_get_event_details(client):
@@ -104,8 +112,9 @@ def test_search_fighters(client):
     res = client.get("/api/v1/fighters?q=Jon")
     assert res.status_code == 200
     data = res.json()
-    assert len(data) == 1
-    assert data[0]["last_name"] == "Jones"
+    assert data["total"] == 1
+    assert len(data["data"]) == 1
+    assert data["data"][0]["last_name"] == "Jones"
 
 
 def test_get_fighter_profile(client):
@@ -118,12 +127,31 @@ def test_get_fighter_profile(client):
     assert notFound.status_code == 404
 
 
+def test_get_matchup(client):
+    res = client.get("/api/v1/matchup?fighter1_id=f1&fighter2_id=f2")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["fighter1"]["first_name"] == "Jon"
+    assert data["fighter2"]["first_name"] == "Stipe"
+    assert "differentials" in data
+    assert data["differentials"]["reach_cm"] == 12.0
+
+
 def test_get_ml_dataset(client):
     res = client.get("/api/v1/ml-dataset")
     assert res.status_code == 200
     data = res.json()
     assert len(data) == 1
     assert data[0]["target_winner"] == 1
+    assert "pre_f1_elo" in data[0]
+
+
+def test_get_db_summary(client):
+    res = client.get("/api/v1/stats/summary")
+    assert res.status_code == 200
+    data = res.json()
+    assert "events" in data
+    assert data["events"] == 1
 
 
 def test_get_health(client):

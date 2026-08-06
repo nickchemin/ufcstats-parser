@@ -83,7 +83,7 @@ class MLDatasetGenerator:
                 fight_stats_map[key] = dict(row)
 
             # State tracker for each fighter's pre-fight history
-            # fid -> { 'history': [...], 'last_date': str, 'streak': int, 'wins': int, 'losses': int, 'draws': int, 'stats': [...] }
+            # fid -> { 'history': [...], 'last_date': str, 'streak': int, 'wins': int, 'losses': int, 'draws': int, 'stats': [...], 'elo': float, 'ko_wins': int, 'sub_wins': int, 'dec_wins': int }
             history_tracker: Dict[str, Dict[str, Any]] = {}
 
             def get_tracker(fid: str) -> Dict[str, Any]:
@@ -96,6 +96,10 @@ class MLDatasetGenerator:
                         "losses": 0,
                         "draws": 0,
                         "stats": [],
+                        "elo": 1500.0,
+                        "ko_wins": 0,
+                        "sub_wins": 0,
+                        "dec_wins": 0,
                     }
                 return history_tracker[fid]
 
@@ -124,8 +128,8 @@ class MLDatasetGenerator:
                     target_winner = None
 
                 # Compute PRE-FIGHT stats for F1 and F2 (Zero Data Leakage)
-                t1 = get_tracker(f1_id) if f1_id else {"wins": 0, "losses": 0, "draws": 0, "streak": 0, "last_date": None, "history": [], "stats": []}
-                t2 = get_tracker(f2_id) if f2_id else {"wins": 0, "losses": 0, "draws": 0, "streak": 0, "last_date": None, "history": [], "stats": []}
+                t1 = get_tracker(f1_id) if f1_id else {"wins": 0, "losses": 0, "draws": 0, "streak": 0, "last_date": None, "history": [], "stats": [], "elo": 1500.0, "ko_wins": 0, "sub_wins": 0, "dec_wins": 0}
+                t2 = get_tracker(f2_id) if f2_id else {"wins": 0, "losses": 0, "draws": 0, "streak": 0, "last_date": None, "history": [], "stats": [], "elo": 1500.0, "ko_wins": 0, "sub_wins": 0, "dec_wins": 0}
 
                 pre_f1_wins = t1["wins"]
                 pre_f1_losses = t1["losses"]
@@ -133,6 +137,11 @@ class MLDatasetGenerator:
                 pre_f1_total = pre_f1_wins + pre_f1_losses + pre_f1_draws
                 pre_f1_win_rate = round(pre_f1_wins / pre_f1_total, 3) if pre_f1_total > 0 else None
                 pre_f1_streak = t1["streak"]
+                pre_f1_elo = round(t1["elo"], 1)
+
+                pre_f1_ko_win_rate = round(t1["ko_wins"] / pre_f1_wins, 3) if pre_f1_wins > 0 else None
+                pre_f1_sub_win_rate = round(t1["sub_wins"] / pre_f1_wins, 3) if pre_f1_wins > 0 else None
+                pre_f1_dec_win_rate = round(t1["dec_wins"] / pre_f1_wins, 3) if pre_f1_wins > 0 else None
 
                 pre_f2_wins = t2["wins"]
                 pre_f2_losses = t2["losses"]
@@ -140,6 +149,11 @@ class MLDatasetGenerator:
                 pre_f2_total = pre_f2_wins + pre_f2_losses + pre_f2_draws
                 pre_f2_win_rate = round(pre_f2_wins / pre_f2_total, 3) if pre_f2_total > 0 else None
                 pre_f2_streak = t2["streak"]
+                pre_f2_elo = round(t2["elo"], 1)
+
+                pre_f2_ko_win_rate = round(t2["ko_wins"] / pre_f2_wins, 3) if pre_f2_wins > 0 else None
+                pre_f2_sub_win_rate = round(t2["sub_wins"] / pre_f2_wins, 3) if pre_f2_wins > 0 else None
+                pre_f2_dec_win_rate = round(t2["dec_wins"] / pre_f2_wins, 3) if pre_f2_wins > 0 else None
 
                 # Inactivity / Layoff calculation (days since last fight)
                 pre_f1_days_since_last = None
@@ -199,6 +213,20 @@ class MLDatasetGenerator:
                 f1_slpm, f1_str_acc, f1_sapm, f1_str_def, f1_td_avg, f1_td_acc, f1_td_def = compute_pre_stats(t1, f1)
                 f2_slpm, f2_str_acc, f2_sapm, f2_str_def, f2_td_avg, f2_td_acc, f2_td_def = compute_pre_stats(t2, f2)
 
+                # Physical ape index & stance flags
+                f1_reach = f1.get("reach_cm")
+                f1_height = f1.get("height_cm")
+                f1_ape_index = round(f1_reach - f1_height, 1) if (f1_reach is not None and f1_height is not None) else None
+
+                f2_reach = f2.get("reach_cm")
+                f2_height = f2.get("height_cm")
+                f2_ape_index = round(f2_reach - f2_height, 1) if (f2_reach is not None and f2_height is not None) else None
+
+                st1 = (f1.get("stance") or "").strip().lower()
+                st2 = (f2.get("stance") or "").strip().lower()
+                is_same_stance = 1 if (st1 and st2 and st1 == st2) else 0
+                is_orthodox_vs_southpaw = 1 if (set([st1, st2]) == {"orthodox", "southpaw"}) else 0
+
                 feature_row = {
                     # Context & Identifiers
                     "fight_id": fight_dict["fight_id"],
@@ -220,7 +248,12 @@ class MLDatasetGenerator:
                     "method": fight_dict["method"],
                     "finish_round": fight_dict["finish_round"],
 
-                    # Physical Attributes
+                    # ELO Rating Features
+                    "pre_f1_elo": pre_f1_elo,
+                    "pre_f2_elo": pre_f2_elo,
+                    "diff_pre_elo": round(pre_f1_elo - pre_f2_elo, 1),
+
+                    # Physical Attributes & Stance
                     "f1_height_cm": f1.get("height_cm"),
                     "f2_height_cm": f2.get("height_cm"),
                     "diff_height_cm": _safe_sub(f1.get("height_cm"), f2.get("height_cm")),
@@ -233,13 +266,18 @@ class MLDatasetGenerator:
                     "f2_reach_cm": f2.get("reach_cm"),
                     "diff_reach_cm": _safe_sub(f1.get("reach_cm"), f2.get("reach_cm")),
 
+                    "f1_ape_index": f1_ape_index,
+                    "f2_ape_index": f2_ape_index,
+                    "diff_ape_index": _safe_sub(f1_ape_index, f2_ape_index),
+
                     "f1_age": f1_age,
                     "f2_age": f2_age,
                     "diff_age_years": _safe_sub(f1_age, f2_age),
 
                     "f1_stance": f1.get("stance"),
                     "f2_stance": f2.get("stance"),
-                    "is_same_stance": 1 if f1.get("stance") and f1.get("stance") == f2.get("stance") else 0,
+                    "is_same_stance": is_same_stance,
+                    "is_orthodox_vs_southpaw": is_orthodox_vs_southpaw,
 
                     # Pre-Fight Status Flags & Streaks (Zero Data Leakage)
                     "pre_f1_ufc_debut": 1 if pre_f1_total == 0 else 0,
@@ -256,6 +294,18 @@ class MLDatasetGenerator:
                     "pre_f1_win_rate": pre_f1_win_rate,
                     "pre_f2_win_rate": pre_f2_win_rate,
                     "diff_pre_win_rate": _safe_sub(pre_f1_win_rate, pre_f2_win_rate, 3),
+
+                    "pre_f1_ko_win_rate": pre_f1_ko_win_rate,
+                    "pre_f2_ko_win_rate": pre_f2_ko_win_rate,
+                    "diff_pre_ko_win_rate": _safe_sub(pre_f1_ko_win_rate, pre_f2_ko_win_rate, 3),
+
+                    "pre_f1_sub_win_rate": pre_f1_sub_win_rate,
+                    "pre_f2_sub_win_rate": pre_f2_sub_win_rate,
+                    "diff_pre_sub_win_rate": _safe_sub(pre_f1_sub_win_rate, pre_f2_sub_win_rate, 3),
+
+                    "pre_f1_dec_win_rate": pre_f1_dec_win_rate,
+                    "pre_f2_dec_win_rate": pre_f2_dec_win_rate,
+                    "diff_pre_dec_win_rate": _safe_sub(pre_f1_dec_win_rate, pre_f2_dec_win_rate, 3),
 
                     "pre_f1_streak": pre_f1_streak,
                     "pre_f2_streak": pre_f2_streak,
@@ -303,7 +353,22 @@ class MLDatasetGenerator:
                 dataset.append(feature_row)
 
                 # UPDATE state tracker for F1 and F2 AFTER computing row features for fight
+                method_upper = (fight_dict.get("method") or "").upper()
+
+                # Calculate ELO expectations
+                e1 = 1.0 / (1.0 + 10.0 ** ((t2["elo"] - t1["elo"]) / 400.0))
+                e2 = 1.0 / (1.0 + 10.0 ** ((t1["elo"] - t2["elo"]) / 400.0))
+                k = 32.0
+
+                if winner_id == f1_id:
+                    score1, score2 = 1.0, 0.0
+                elif winner_id == f2_id:
+                    score1, score2 = 0.0, 1.0
+                else:
+                    score1, score2 = 0.5, 0.5
+
                 if f1_id:
+                    t1["elo"] = t1["elo"] + k * (score1 - e1)
                     s1 = fight_stats_map.get((fight_id, f1_id))
                     if s1:
                         t1["stats"].append(s1)
@@ -313,6 +378,12 @@ class MLDatasetGenerator:
                         t1["wins"] += 1
                         t1["streak"] = (t1["streak"] + 1) if t1["streak"] > 0 else 1
                         t1["history"].append("win")
+                        if "KO" in method_upper or "TKO" in method_upper:
+                            t1["ko_wins"] += 1
+                        elif "SUB" in method_upper:
+                            t1["sub_wins"] += 1
+                        elif "DEC" in method_upper:
+                            t1["dec_wins"] += 1
                     elif winner_id == f2_id:
                         t1["losses"] += 1
                         t1["streak"] = (t1["streak"] - 1) if t1["streak"] < 0 else -1
@@ -323,6 +394,7 @@ class MLDatasetGenerator:
                         t1["history"].append("draw")
 
                 if f2_id:
+                    t2["elo"] = t2["elo"] + k * (score2 - e2)
                     s2 = fight_stats_map.get((fight_id, f2_id))
                     if s2:
                         t2["stats"].append(s2)
@@ -332,6 +404,12 @@ class MLDatasetGenerator:
                         t2["wins"] += 1
                         t2["streak"] = (t2["streak"] + 1) if t2["streak"] > 0 else 1
                         t2["history"].append("win")
+                        if "KO" in method_upper or "TKO" in method_upper:
+                            t2["ko_wins"] += 1
+                        elif "SUB" in method_upper:
+                            t2["sub_wins"] += 1
+                        elif "DEC" in method_upper:
+                            t2["dec_wins"] += 1
                     elif winner_id == f1_id:
                         t2["losses"] += 1
                         t2["streak"] = (t2["streak"] - 1) if t2["streak"] < 0 else -1
