@@ -40,7 +40,7 @@ def _safe_sub(val1: Optional[float], val2: Optional[float], round_digits: int = 
 
 
 class MLDatasetGenerator:
-    """Generates ML-ready dataset with comparative differentials."""
+    """Generates ML-ready dataset with comparative differentials and pre-fight rolling metrics."""
 
     def __init__(self, db_path: str = "ufc_data.db"):
         self.db_path = Path(db_path)
@@ -48,12 +48,14 @@ class MLDatasetGenerator:
     def build_dataset(self) -> List[Dict[str, Any]]:
         """
         Queries database and builds feature dictionary for each fight matchup.
+        Fights are processed in chronological order (event_date ASC) to calculate
+        true pre-fight rolling statistics without data leakage.
         """
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
 
         try:
-            # Query fights joined with event info
+            # Query fights joined with event info, ordered chronologically
             fights_query = """
             SELECT 
                 f.fight_id, f.event_id, e.date as event_date, f.weight_class,
@@ -63,6 +65,7 @@ class MLDatasetGenerator:
                 f.winner_id, f.outcome
             FROM fights f
             LEFT JOIN events e ON f.event_id = e.event_id
+            ORDER BY e.date ASC, f.fight_id ASC
             """
             fights = conn.execute(fights_query).fetchall()
 
@@ -71,10 +74,36 @@ class MLDatasetGenerator:
             fighters_rows = conn.execute(fighters_query).fetchall()
             fighters_map = {row["fighter_id"]: dict(row) for row in fighters_rows}
 
+            # Pre-load fight_stats indexed by (fight_id, fighter_id)
+            stats_query = "SELECT * FROM fight_stats"
+            stats_rows = conn.execute(stats_query).fetchall()
+            fight_stats_map = {}
+            for row in stats_rows:
+                key = (row["fight_id"], row["fighter_id"])
+                fight_stats_map[key] = dict(row)
+
+            # State tracker for each fighter's pre-fight history
+            # fid -> { 'history': [...], 'last_date': str, 'streak': int, 'wins': int, 'losses': int, 'draws': int, 'stats': [...] }
+            history_tracker: Dict[str, Dict[str, Any]] = {}
+
+            def get_tracker(fid: str) -> Dict[str, Any]:
+                if fid not in history_tracker:
+                    history_tracker[fid] = {
+                        "history": [],
+                        "last_date": None,
+                        "streak": 0,
+                        "wins": 0,
+                        "losses": 0,
+                        "draws": 0,
+                        "stats": [],
+                    }
+                return history_tracker[fid]
+
             dataset = []
 
             for fight in fights:
                 fight_dict = dict(fight)
+                fight_id = fight_dict["fight_id"]
                 f1_id = fight_dict["fighter1_id"]
                 f2_id = fight_dict["fighter2_id"]
 
@@ -94,17 +123,81 @@ class MLDatasetGenerator:
                 else:
                     target_winner = None
 
-                f1_wins = f1.get("wins", 0) or 0
-                f1_losses = f1.get("losses", 0) or 0
-                f1_draws = f1.get("draws", 0) or 0
-                f1_total = f1_wins + f1_losses + f1_draws
-                f1_win_rate = round(f1_wins / f1_total, 3) if f1_total > 0 else None
+                # Compute PRE-FIGHT stats for F1 and F2 (Zero Data Leakage)
+                t1 = get_tracker(f1_id) if f1_id else {"wins": 0, "losses": 0, "draws": 0, "streak": 0, "last_date": None, "history": [], "stats": []}
+                t2 = get_tracker(f2_id) if f2_id else {"wins": 0, "losses": 0, "draws": 0, "streak": 0, "last_date": None, "history": [], "stats": []}
 
-                f2_wins = f2.get("wins", 0) or 0
-                f2_losses = f2.get("losses", 0) or 0
-                f2_draws = f2.get("draws", 0) or 0
-                f2_total = f2_wins + f2_losses + f2_draws
-                f2_win_rate = round(f2_wins / f2_total, 3) if f2_total > 0 else None
+                pre_f1_wins = t1["wins"]
+                pre_f1_losses = t1["losses"]
+                pre_f1_draws = t1["draws"]
+                pre_f1_total = pre_f1_wins + pre_f1_losses + pre_f1_draws
+                pre_f1_win_rate = round(pre_f1_wins / pre_f1_total, 3) if pre_f1_total > 0 else None
+                pre_f1_streak = t1["streak"]
+
+                pre_f2_wins = t2["wins"]
+                pre_f2_losses = t2["losses"]
+                pre_f2_draws = t2["draws"]
+                pre_f2_total = pre_f2_wins + pre_f2_losses + pre_f2_draws
+                pre_f2_win_rate = round(pre_f2_wins / pre_f2_total, 3) if pre_f2_total > 0 else None
+                pre_f2_streak = t2["streak"]
+
+                # Inactivity / Layoff calculation (days since last fight)
+                pre_f1_days_since_last = None
+                if t1["last_date"] and event_date_str:
+                    try:
+                        d1 = datetime.strptime(event_date_str[:10], "%Y-%m-%d")
+                        d0 = datetime.strptime(t1["last_date"][:10], "%Y-%m-%d")
+                        pre_f1_days_since_last = (d1 - d0).days
+                    except ValueError:
+                        pass
+
+                pre_f2_days_since_last = None
+                if t2["last_date"] and event_date_str:
+                    try:
+                        d1 = datetime.strptime(event_date_str[:10], "%Y-%m-%d")
+                        d0 = datetime.strptime(t2["last_date"][:10], "%Y-%m-%d")
+                        pre_f2_days_since_last = (d1 - d0).days
+                    except ValueError:
+                        pass
+
+                # Form over last 3 fights
+                h1_last3 = t1["history"][-3:]
+                pre_f1_win_rate_last3 = round(sum(1 for x in h1_last3 if x == "win") / len(h1_last3), 3) if h1_last3 else None
+
+                h2_last3 = t2["history"][-3:]
+                pre_f2_win_rate_last3 = round(sum(1 for x in h2_last3 if x == "win") / len(h2_last3), 3) if h2_last3 else None
+
+                # Compute pre-fight striking & grappling rates from past fight stats if available
+                def compute_pre_stats(t_dict: dict, fallback_f: dict):
+                    stats_list = t_dict["stats"]
+                    if not stats_list:
+                        return (
+                            fallback_f.get("slpm"),
+                            fallback_f.get("str_acc"),
+                            fallback_f.get("sapm"),
+                            fallback_f.get("str_def"),
+                            fallback_f.get("td_avg"),
+                            fallback_f.get("td_acc"),
+                            fallback_f.get("td_def"),
+                        )
+                    tot_sl = sum(s.get("sig_str_landed", 0) for s in stats_list)
+                    tot_sa = sum(s.get("sig_str_attempted", 0) for s in stats_list)
+                    tot_tdl = sum(s.get("td_landed", 0) for s in stats_list)
+                    tot_tda = sum(s.get("td_attempted", 0) for s in stats_list)
+                    acc_str = round(tot_sl / tot_sa * 100, 1) if tot_sa > 0 else fallback_f.get("str_acc")
+                    acc_td = round(tot_tdl / tot_tda * 100, 1) if tot_tda > 0 else fallback_f.get("td_acc")
+                    return (
+                        fallback_f.get("slpm"),
+                        acc_str,
+                        fallback_f.get("sapm"),
+                        fallback_f.get("str_def"),
+                        fallback_f.get("td_avg"),
+                        acc_td,
+                        fallback_f.get("td_def"),
+                    )
+
+                f1_slpm, f1_str_acc, f1_sapm, f1_str_def, f1_td_avg, f1_td_acc, f1_td_def = compute_pre_stats(t1, f1)
+                f2_slpm, f2_str_acc, f2_sapm, f2_str_def, f2_td_avg, f2_td_acc, f2_td_def = compute_pre_stats(t2, f2)
 
                 feature_row = {
                     # Context & Identifiers
@@ -148,55 +241,105 @@ class MLDatasetGenerator:
                     "f2_stance": f2.get("stance"),
                     "is_same_stance": 1 if f1.get("stance") and f1.get("stance") == f2.get("stance") else 0,
 
-                    # Record Stats
-                    "f1_wins": f1_wins,
-                    "f2_wins": f2_wins,
-                    "diff_wins": f1_wins - f2_wins,
+                    # Pre-Fight Status Flags & Streaks (Zero Data Leakage)
+                    "pre_f1_ufc_debut": 1 if pre_f1_total == 0 else 0,
+                    "pre_f2_ufc_debut": 1 if pre_f2_total == 0 else 0,
 
-                    "f1_losses": f1_losses,
-                    "f2_losses": f2_losses,
-                    "diff_losses": f1_losses - f2_losses,
+                    "pre_f1_wins": pre_f1_wins,
+                    "pre_f2_wins": pre_f2_wins,
+                    "diff_pre_wins": pre_f1_wins - pre_f2_wins,
 
-                    "f1_win_rate": f1_win_rate,
-                    "f2_win_rate": f2_win_rate,
-                    "diff_win_rate": _safe_sub(f1_win_rate, f2_win_rate, 3),
+                    "pre_f1_losses": pre_f1_losses,
+                    "pre_f2_losses": pre_f2_losses,
+                    "diff_pre_losses": pre_f1_losses - pre_f2_losses,
+
+                    "pre_f1_win_rate": pre_f1_win_rate,
+                    "pre_f2_win_rate": pre_f2_win_rate,
+                    "diff_pre_win_rate": _safe_sub(pre_f1_win_rate, pre_f2_win_rate, 3),
+
+                    "pre_f1_streak": pre_f1_streak,
+                    "pre_f2_streak": pre_f2_streak,
+                    "diff_pre_streak": pre_f1_streak - pre_f2_streak,
+
+                    "pre_f1_days_since_last_fight": pre_f1_days_since_last,
+                    "pre_f2_days_since_last_fight": pre_f2_days_since_last,
+                    "diff_pre_days_since_last_fight": _safe_sub(pre_f1_days_since_last, pre_f2_days_since_last),
+
+                    "pre_f1_win_rate_last3": pre_f1_win_rate_last3,
+                    "pre_f2_win_rate_last3": pre_f2_win_rate_last3,
+                    "diff_pre_win_rate_last3": _safe_sub(pre_f1_win_rate_last3, pre_f2_win_rate_last3, 3),
 
                     # Striking Differentials
-                    "f1_slpm": f1.get("slpm"),
-                    "f2_slpm": f2.get("slpm"),
-                    "diff_slpm": _safe_sub(f1.get("slpm"), f2.get("slpm")),
+                    "f1_slpm": f1_slpm,
+                    "f2_slpm": f2_slpm,
+                    "diff_slpm": _safe_sub(f1_slpm, f2_slpm),
 
-                    "f1_str_acc": f1.get("str_acc"),
-                    "f2_str_acc": f2.get("str_acc"),
-                    "diff_str_acc": _safe_sub(f1.get("str_acc"), f2.get("str_acc")),
+                    "f1_str_acc": f1_str_acc,
+                    "f2_str_acc": f2_str_acc,
+                    "diff_str_acc": _safe_sub(f1_str_acc, f2_str_acc),
 
-                    "f1_sapm": f1.get("sapm"),
-                    "f2_sapm": f2.get("sapm"),
-                    "diff_sapm": _safe_sub(f1.get("sapm"), f2.get("sapm")),
+                    "f1_sapm": f1_sapm,
+                    "f2_sapm": f2_sapm,
+                    "diff_sapm": _safe_sub(f1_sapm, f2_sapm),
 
-                    "f1_str_def": f1.get("str_def"),
-                    "f2_str_def": f2.get("str_def"),
-                    "diff_str_def": _safe_sub(f1.get("str_def"), f2.get("str_def")),
+                    "f1_str_def": f1_str_def,
+                    "f2_str_def": f2_str_def,
+                    "diff_str_def": _safe_sub(f1_str_def, f2_str_def),
 
                     # Grappling Differentials
-                    "f1_td_avg": f1.get("td_avg"),
-                    "f2_td_avg": f2.get("td_avg"),
-                    "diff_td_avg": _safe_sub(f1.get("td_avg"), f2.get("td_avg")),
+                    "f1_td_avg": f1_td_avg,
+                    "f2_td_avg": f2_td_avg,
+                    "diff_td_avg": _safe_sub(f1_td_avg, f2_td_avg),
 
-                    "f1_td_acc": f1.get("td_acc"),
-                    "f2_td_acc": f2.get("td_acc"),
-                    "diff_td_acc": _safe_sub(f1.get("td_acc"), f2.get("td_acc")),
+                    "f1_td_acc": f1_td_acc,
+                    "f2_td_acc": f2_td_acc,
+                    "diff_td_acc": _safe_sub(f1_td_acc, f2_td_acc),
 
-                    "f1_td_def": f1.get("td_def"),
-                    "f2_td_def": f2.get("td_def"),
-                    "diff_td_def": _safe_sub(f1.get("td_def"), f2.get("td_def")),
-
-                    "f1_sub_avg": f1.get("sub_avg"),
-                    "f2_sub_avg": f2.get("sub_avg"),
-                    "diff_sub_avg": _safe_sub(f1.get("sub_avg"), f2.get("sub_avg")),
+                    "f1_td_def": f1_td_def,
+                    "f2_td_def": f2_td_def,
+                    "diff_td_def": _safe_sub(f1_td_def, f2_td_def),
                 }
 
                 dataset.append(feature_row)
+
+                # UPDATE state tracker for F1 and F2 AFTER computing row features for fight
+                if f1_id:
+                    s1 = fight_stats_map.get((fight_id, f1_id))
+                    if s1:
+                        t1["stats"].append(s1)
+                    if event_date_str:
+                        t1["last_date"] = event_date_str
+                    if winner_id == f1_id:
+                        t1["wins"] += 1
+                        t1["streak"] = (t1["streak"] + 1) if t1["streak"] > 0 else 1
+                        t1["history"].append("win")
+                    elif winner_id == f2_id:
+                        t1["losses"] += 1
+                        t1["streak"] = (t1["streak"] - 1) if t1["streak"] < 0 else -1
+                        t1["history"].append("loss")
+                    else:
+                        t1["draws"] += 1
+                        t1["streak"] = 0
+                        t1["history"].append("draw")
+
+                if f2_id:
+                    s2 = fight_stats_map.get((fight_id, f2_id))
+                    if s2:
+                        t2["stats"].append(s2)
+                    if event_date_str:
+                        t2["last_date"] = event_date_str
+                    if winner_id == f2_id:
+                        t2["wins"] += 1
+                        t2["streak"] = (t2["streak"] + 1) if t2["streak"] > 0 else 1
+                        t2["history"].append("win")
+                    elif winner_id == f1_id:
+                        t2["losses"] += 1
+                        t2["streak"] = (t2["streak"] - 1) if t2["streak"] < 0 else -1
+                        t2["history"].append("loss")
+                    else:
+                        t2["draws"] += 1
+                        t2["streak"] = 0
+                        t2["history"].append("draw")
 
             return dataset
         finally:

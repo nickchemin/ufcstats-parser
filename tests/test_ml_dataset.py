@@ -118,11 +118,65 @@ def test_ml_dataset_generation(populated_db):
 
     assert row["diff_reach_cm"] == 10.2  # 213.4 - 203.2
     assert row["diff_weight_kg"] == 6.4   # 112.5 - 106.1
-    assert row["diff_wins"] == 8           # 28 - 20
+    assert row["diff_pre_wins"] == 0      # 0 - 0 (pre-fight history in DB before first fight)
+    assert row["pre_f1_ufc_debut"] == 1   # Debut in dataset
     assert row["diff_slpm"] == -0.52       # 4.30 - 4.82
     assert row["diff_str_acc"] == 5.0      # 58 - 53
     assert row["diff_td_def"] == 27.0      # 95 - 68
     assert row["is_same_stance"] == 1
+
+
+def test_pre_fight_rolling_stats(tmp_path):
+    db_file = tmp_path / "ml_rolling_test.db"
+    db = Database(str(db_file))
+
+    # Add two sequential events
+    e1 = Event(event_id="e1", url="http://example.com/e1", name="UFC 100", event_date=date(2020, 1, 1))
+    e2 = Event(event_id="e2", url="http://example.com/e2", name="UFC 101", event_date=date(2020, 6, 1))
+    db.upsert_event(e1)
+    db.upsert_event(e2)
+
+    f1 = Fighter(fighter_id="f1", url="http://example.com/f1", first_name="Fighter", last_name="One")
+    f2 = Fighter(fighter_id="f2", url="http://example.com/f2", first_name="Fighter", last_name="Two")
+    db.upsert_fighter(f1)
+    db.upsert_fighter(f2)
+
+    # Fight 1 (Jan 2020): F1 beats F2
+    fight1 = Fight(
+        fight_id="fight1", url="http://example.com/f1", event_id="e1",
+        fighter1_id="f1", fighter1_name="F1", fighter2_id="f2", fighter2_name="F2",
+        winner_id="f1", outcome="W", method="KO/TKO"
+    )
+    # Fight 2 (June 2020): F1 fights F2 again
+    fight2 = Fight(
+        fight_id="fight2", url="http://example.com/f2", event_id="e2",
+        fighter1_id="f1", fighter1_name="F1", fighter2_id="f2", fighter2_name="F2",
+        winner_id="f1", outcome="W", method="Decision"
+    )
+    db.upsert_fight(fight1)
+    db.upsert_fight(fight2)
+
+    generator = MLDatasetGenerator(str(db_file))
+    dataset = generator.build_dataset()
+
+    assert len(dataset) == 2
+
+    row1, row2 = dataset[0], dataset[1]
+
+    # Fight 1: Debut for both in dataset
+    assert row1["fight_id"] == "fight1"
+    assert row1["pre_f1_ufc_debut"] == 1
+    assert row1["pre_f1_wins"] == 0
+    assert row1["pre_f1_streak"] == 0
+
+    # Fight 2: F1 has 1 prior win, streak +1; F2 has 1 prior loss, streak -1
+    assert row2["fight_id"] == "fight2"
+    assert row2["pre_f1_ufc_debut"] == 0
+    assert row2["pre_f1_wins"] == 1
+    assert row2["pre_f1_streak"] == 1
+    assert row2["pre_f2_losses"] == 1
+    assert row2["pre_f2_streak"] == -1
+    assert row2["pre_f1_days_since_last_fight"] == 152  # Days between Jan 1 and June 1 2020
 
 
 def test_ml_dataset_export(populated_db, tmp_path):
