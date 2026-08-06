@@ -25,7 +25,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich import box
 
-from src.scraper import UFCStatsScraper
+from src.scraper import UFCStatsScraper, AsyncUFCStatsScraper, ProxyManager
 from src.storage.cache import FileCache
 from src.storage.checker import DatabaseChecker
 from src.storage.database import Database
@@ -72,9 +72,11 @@ def print_banner():
 @click.option(
     "--delay-max", default=3.5, show_default=True, type=float, help="Maximum request delay (seconds)"
 )
+@click.option("--proxy", default=None, help="HTTP/HTTPS proxy URL (e.g. http://127.0.0.1:8080)")
+@click.option("--proxy-file", default=None, help="Path to text file containing list of proxies")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose debug output")
 @click.pass_context
-def cli(ctx, db, cache_dir, delay_min, delay_max, verbose):
+def cli(ctx, db, cache_dir, delay_min, delay_max, proxy, proxy_file, verbose):
     """UFCStats Parser -- Data extraction tool for ufcstats.com"""
     print_banner()
     ctx.ensure_object(dict)
@@ -82,6 +84,8 @@ def cli(ctx, db, cache_dir, delay_min, delay_max, verbose):
     ctx.obj["cache_dir"] = cache_dir
     ctx.obj["delay_min"] = delay_min
     ctx.obj["delay_max"] = delay_max
+    ctx.obj["proxy"] = proxy
+    ctx.obj["proxy_file"] = proxy_file
     ctx.obj["verbose"] = verbose
 
     if verbose:
@@ -102,17 +106,38 @@ def cli(ctx, db, cache_dir, delay_min, delay_max, verbose):
 @click.option("--no-fight-details", is_flag=True, help="Skip detailed fight round statistics")
 @click.option("--no-fighters", is_flag=True, help="Skip crawling full fighter profiles directory")
 @click.option("--limit-events", default=None, type=int, help="Limit number of events to process")
+@click.option("--async", "use_async", is_flag=True, help="Enable async HTTP scraper for high-speed parallel fetching")
+@click.option("--concurrency", default=5, show_default=True, type=int, help="Concurrency limit for async mode")
 @click.pass_context
-def crawl(ctx, crawl_all, incremental, upcoming, event_name, only_fighters, no_fight_details, no_fighters, limit_events):
+def crawl(ctx, crawl_all, incremental, upcoming, event_name, only_fighters, no_fight_details, no_fighters, limit_events, use_async, concurrency):
     """Crawl data from ufcstats.com"""
     obj = ctx.obj
     cache = FileCache(obj["cache_dir"])
     db = Database(obj["db_path"])
-    scraper = UFCStatsScraper(
-        min_delay=obj["delay_min"],
-        max_delay=obj["delay_max"],
-        cache=cache,
-    )
+
+    proxy_manager = None
+    if obj.get("proxy_file"):
+        proxy_manager = ProxyManager.from_file(obj["proxy_file"])
+    elif obj.get("proxy"):
+        proxy_manager = ProxyManager([obj["proxy"]])
+
+    if use_async:
+        import asyncio
+        async_scraper = AsyncUFCStatsScraper(
+            concurrency=concurrency,
+            min_delay=0.1,
+            max_delay=0.5,
+            cache=cache,
+            proxy_manager=proxy_manager,
+        )
+        scraper = async_scraper
+    else:
+        scraper = UFCStatsScraper(
+            min_delay=obj["delay_min"],
+            max_delay=obj["delay_max"],
+            cache=cache,
+            proxy_manager=proxy_manager,
+        )
 
     start_time = time.time()
 

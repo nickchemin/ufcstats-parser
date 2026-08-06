@@ -37,12 +37,14 @@ def _url_ttl(url: str) -> int:
 
 class FileCache:
     """
-    Disk cache manager saving HTML content alongside metadata JSON files.
+    Two-tier cache manager saving HTML content in RAM memory and disk alongside metadata.
     """
 
-    def __init__(self, cache_dir: str = "cache"):
+    def __init__(self, cache_dir: str = "cache", max_memory_items: int = 500):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._memory_cache = {}
+        self._max_memory_items = max_memory_items
         self._hits = 0
         self._misses = 0
 
@@ -58,8 +60,18 @@ class FileCache:
     def get(self, url: str) -> Optional[str]:
         """
         Retrieves cached HTML content or None if missing/expired.
+        Checks in-memory cache first, then disk cache.
         """
         key = self._key(url)
+
+        if key in self._memory_cache:
+            html, exp_time = self._memory_cache[key]
+            if time.time() < exp_time:
+                self._hits += 1
+                return html
+            else:
+                del self._memory_cache[key]
+
         html_path = self._html_path(key)
         meta_path = self._meta_path(key)
 
@@ -77,8 +89,12 @@ class FileCache:
                 self._misses += 1
                 return None
 
+            html = html_path.read_text(encoding="utf-8")
+            if len(self._memory_cache) < self._max_memory_items:
+                self._memory_cache[key] = (html, meta["timestamp"] + ttl)
+
             self._hits += 1
-            return html_path.read_text(encoding="utf-8")
+            return html
 
         except Exception as e:
             logger.warning(f"[cache read error] {url}: {e}")
@@ -86,9 +102,13 @@ class FileCache:
             return None
 
     def set(self, url: str, html: str) -> None:
-        """Saves HTML string and metadata into cache."""
+        """Saves HTML string and metadata into memory and disk cache."""
         key = self._key(url)
         ttl = _url_ttl(url)
+
+        if len(self._memory_cache) >= self._max_memory_items:
+            self._memory_cache.pop(next(iter(self._memory_cache)))
+        self._memory_cache[key] = (html, time.time() + ttl)
 
         try:
             self._html_path(key).write_text(html, encoding="utf-8")
@@ -104,14 +124,16 @@ class FileCache:
         return self.get(url) is not None
 
     def invalidate(self, url: str) -> None:
-        """Deletes cache entry for a specific URL."""
+        """Deletes cache entry for a specific URL from memory and disk."""
         key = self._key(url)
+        self._memory_cache.pop(key, None)
         for path in [self._html_path(key), self._meta_path(key)]:
             if path.exists():
                 path.unlink()
 
     def clear(self) -> int:
-        """Clears all cached files. Returns number of removed files."""
+        """Clears all cached files and memory entries. Returns number of removed files."""
+        self._memory_cache.clear()
         count = 0
         for f in self.cache_dir.glob("*"):
             f.unlink()
