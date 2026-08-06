@@ -106,7 +106,13 @@ def _parse_fight_row(row, event_id: str, is_main_event: bool = False) -> Optiona
         idx = wl_texts.index("win")
         winner_id = fighter1_id if idx == 0 else fighter2_id
         outcome = "W"
-    elif len(wl_texts) >= 1 and wl_texts[0] in ("draw", "nc"):
+    elif any("draw" in t for t in wl_texts):
+        outcome = "D"
+        winner_id = None
+    elif any("nc" in t for t in wl_texts):
+        outcome = "NC"
+        winner_id = None
+    elif len(wl_texts) >= 1 and wl_texts[0] in ("draw", "nc", "d", "n/c"):
         outcome = wl_texts[0].upper()
 
     # Column 6: Weight Class
@@ -126,7 +132,12 @@ def _parse_fight_row(row, event_id: str, is_main_event: bool = False) -> Optiona
     # Column 9: Time
     time_val = col_text(9) or None
 
-    title_fight = bool(weight_class and re.search(r"title|championship", weight_class, re.IGNORECASE))
+    row_html = str(row).lower()
+    title_fight = (
+        bool(weight_class and re.search(r"title|championship|belt", weight_class, re.IGNORECASE))
+        or "belt" in row_html
+        or bool(row.find("img", src=re.compile(r"belt")))
+    )
 
     return Fight(
         fight_id=fight_id,

@@ -100,3 +100,53 @@ def test_fight_predictor_symmetry_and_same_fighter(predictor_test_db):
     p_same = predictor.predict_matchup(f1_feat, f1_feat)
     assert p_same["fighter1_win_probability"] == 0.5
     assert p_same["fighter2_win_probability"] == 0.5
+
+
+def test_feature_extraction_dictionary_key_matching(predictor_test_db):
+    """
+    Verifies that _extract_feature_diff correctly extracts non-zero feature differentials
+    when provided with standard API dictionary keys (pre_f1_elo, age, wins, streak, losses).
+    """
+    predictor = FightPredictor(str(predictor_test_db.db_path))
+
+    f1_dict = {
+        "pre_f1_elo": 1750.0,
+        "age": 37.5,
+        "wins": 27,
+        "losses": 1,
+        "streak": 5,
+        "slpm": 4.5,
+        "height_cm": 193.0,
+        "reach_cm": 215.0,
+        "stance": "Orthodox",
+    }
+    f2_dict = {
+        "pre_f2_elo": 1500.0,
+        "age": 32.0,
+        "wins": 15,
+        "losses": 4,
+        "streak": 1,
+        "slpm": 3.2,
+        "height_cm": 185.0,
+        "reach_cm": 190.0,
+        "stance": "Southpaw",
+    }
+
+    # Verify key extraction directly
+    diff_elo = predictor._extract_feature_diff(f1_dict, f2_dict, "diff_pre_elo")
+    diff_age = predictor._extract_feature_diff(f1_dict, f2_dict, "diff_age_years")
+    diff_wins = predictor._extract_feature_diff(f1_dict, f2_dict, "diff_pre_wins")
+    diff_streak = predictor._extract_feature_diff(f1_dict, f2_dict, "diff_pre_streak")
+
+    assert diff_elo == 250.0
+    assert diff_age == 5.5
+    assert diff_wins == 12.0
+    assert diff_streak == 4.0
+
+
+def test_train_zero_test_size(predictor_test_db):
+    """Verifies that train(test_size=0.0) trains on 100% of data without throwing exceptions."""
+    predictor = FightPredictor(str(predictor_test_db.db_path))
+    metrics = predictor.train(test_size=0.0)
+    assert "accuracy" in metrics
+    assert metrics["train_samples"] > 0

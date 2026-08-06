@@ -215,26 +215,37 @@ class MLDatasetGenerator:
                 h2_last3 = t2["history"][-3:]
                 pre_f2_win_rate_last3 = round(sum(1 for x in h2_last3 if x == "win") / len(h2_last3), 3) if h2_last3 else None
 
-                # Compute pre-fight striking & grappling rates strictly from past fight stats (Zero Data Leakage)
+                # Compute pre-fight striking & grappling rates strictly from past fight stats (Zero Data Leakage & Real Absorbed Rates)
                 def compute_pre_stats(t_dict: dict):
                     stats_list = t_dict.get("stats", [])
                     if not stats_list:
                         return (None, None, None, None, None, None, None)
 
-                    tot_sl = sum(s.get("sig_str_landed", 0) for s in stats_list)
-                    tot_sa = sum(s.get("sig_str_attempted", 0) for s in stats_list)
-                    tot_tdl = sum(s.get("td_landed", 0) for s in stats_list)
-                    tot_tda = sum(s.get("td_attempted", 0) for s in stats_list)
+                    tot_sl = sum(item.get("own", {}).get("sig_str_landed", 0) for item in stats_list)
+                    tot_sa = sum(item.get("own", {}).get("sig_str_attempted", 0) for item in stats_list)
+                    tot_tdl = sum(item.get("own", {}).get("td_landed", 0) for item in stats_list)
+                    tot_tda = sum(item.get("own", {}).get("td_attempted", 0) for item in stats_list)
+
+                    # Opponent stats against this fighter (for SApM, Striking Defense & Takedown Defense)
+                    tot_opp_sl = sum(item.get("opp", {}).get("sig_str_landed", 0) for item in stats_list)
+                    tot_opp_sa = sum(item.get("opp", {}).get("sig_str_attempted", 0) for item in stats_list)
+                    tot_opp_tdl = sum(item.get("opp", {}).get("td_landed", 0) for item in stats_list)
+                    tot_opp_tda = sum(item.get("opp", {}).get("td_attempted", 0) for item in stats_list)
 
                     tot_mins = max(1.0, len(stats_list) * 10.0)
 
                     slpm = round(tot_sl / tot_mins, 2)
-                    sapm = round(tot_sa / tot_mins, 2)
+                    sapm = round(tot_opp_sl / tot_mins, 2)
+
                     acc_str = round((tot_sl / tot_sa) * 100.0, 1) if tot_sa > 0 else None
+                    str_def = round((1.0 - (tot_opp_sl / tot_opp_sa)) * 100.0, 1) if tot_opp_sa > 0 else None
+
                     acc_td = round((tot_tdl / tot_tda) * 100.0, 1) if tot_tda > 0 else None
+                    td_def = round((1.0 - (tot_opp_tdl / tot_opp_tda)) * 100.0, 1) if tot_opp_tda > 0 else None
+
                     td_avg = round(tot_tdl / (tot_mins / 15.0), 2)
 
-                    return (slpm, acc_str, sapm, None, td_avg, acc_td, None)
+                    return (slpm, acc_str, sapm, str_def, td_avg, acc_td, td_def)
 
                 f1_slpm, f1_str_acc, f1_sapm, f1_str_def, f1_td_avg, f1_td_acc, f1_td_def = compute_pre_stats(t1)
                 f2_slpm, f2_str_acc, f2_sapm, f2_str_def, f2_td_avg, f2_td_acc, f2_td_def = compute_pre_stats(t2)
@@ -417,11 +428,13 @@ class MLDatasetGenerator:
                 else:
                     score1, score2 = 0.5, 0.5
 
+                s1 = fight_stats_map.get((fight_id, f1_id)) if f1_id else None
+                s2 = fight_stats_map.get((fight_id, f2_id)) if f2_id else None
+
                 if f1_id:
                     t1["elo"] = t1["elo"] + k * (score1 - e1)
-                    s1 = fight_stats_map.get((fight_id, f1_id))
-                    if s1:
-                        t1["stats"].append(s1)
+                    if s1 or s2:
+                        t1["stats"].append({"own": s1 or {}, "opp": s2 or {}})
                     if event_date_str:
                         t1["last_date"] = event_date_str
                     if winner_id == f1_id:
@@ -445,9 +458,8 @@ class MLDatasetGenerator:
 
                 if f2_id:
                     t2["elo"] = t2["elo"] + k * (score2 - e2)
-                    s2 = fight_stats_map.get((fight_id, f2_id))
-                    if s2:
-                        t2["stats"].append(s2)
+                    if s1 or s2:
+                        t2["stats"].append({"own": s2 or {}, "opp": s1 or {}})
                     if event_date_str:
                         t2["last_date"] = event_date_str
                     if winner_id == f2_id:

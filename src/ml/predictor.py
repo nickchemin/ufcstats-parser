@@ -203,9 +203,13 @@ class FightPredictor:
         # Ensure chronological order by event_date
         valid_rows.sort(key=lambda r: r.get("event_date") or "")
 
-        split_idx = int(len(valid_rows) * (1.0 - test_size))
-        train_rows = valid_rows[:split_idx]
-        test_rows = valid_rows[split_idx:]
+        if test_size <= 0.0:
+            train_rows = valid_rows
+            test_rows = valid_rows
+        else:
+            split_idx = int(len(valid_rows) * (1.0 - test_size))
+            train_rows = valid_rows[:split_idx] if split_idx > 0 else valid_rows
+            test_rows = valid_rows[split_idx:] if split_idx < len(valid_rows) else valid_rows
 
         # Apply symmetry augmentation to BOTH train and test to avoid single-class evaluation bias
         X_train, y_train = self._extract_features(train_rows, augment_symmetry=True)
@@ -386,15 +390,57 @@ class FightPredictor:
             "is_trained": True,
         }
 
+    def _get_feature_val(self, f: Dict[str, Any], raw_key: str) -> float:
+        if not f:
+            return 0.0
+
+        aliases = {
+            "pre_elo": ["pre_f1_elo", "pre_f2_elo", "pre_elo", "elo"],
+            "age_years": ["age_years", "age"],
+            "pre_wins": ["pre_f1_wins", "pre_f2_wins", "pre_wins", "wins"],
+            "pre_losses": ["pre_f1_losses", "pre_f2_losses", "pre_losses", "losses"],
+            "pre_total_fights": ["pre_f1_total_fights", "pre_f2_total_fights", "total_fights"],
+            "pre_streak": ["pre_f1_streak", "pre_f2_streak", "pre_streak", "streak"],
+            "pre_win_rate": ["pre_f1_win_rate", "pre_f2_win_rate", "win_rate"],
+            "pre_ko_win_rate": ["pre_f1_ko_win_rate", "pre_f2_ko_win_rate", "ko_win_rate"],
+            "pre_sub_win_rate": ["pre_f1_sub_win_rate", "pre_f2_sub_win_rate", "sub_win_rate"],
+            "pre_finish_win_rate": ["pre_f1_finish_win_rate", "pre_f2_finish_win_rate", "finish_win_rate"],
+            "pre_dec_win_rate": ["pre_f1_dec_win_rate", "pre_f2_dec_win_rate", "dec_win_rate"],
+            "pre_days_since_last_fight": ["pre_f1_days_since_last_fight", "pre_f2_days_since_last_fight", "days_since_last_fight"],
+            "pre_win_rate_last3": ["pre_f1_win_rate_last3", "pre_f2_win_rate_last3", "win_rate_last3"],
+            "reach_ratio": ["f1_reach_ratio", "f2_reach_ratio", "reach_ratio"],
+            "strike_efficiency": ["f1_strike_efficiency", "f2_strike_efficiency", "strike_efficiency"],
+            "ape_index": ["f1_ape_index", "f2_ape_index", "ape_index"],
+        }
+
+        if raw_key in f and f[raw_key] is not None:
+            try:
+                return float(f[raw_key])
+            except (ValueError, TypeError):
+                pass
+
+        for alias in aliases.get(raw_key, [f"pre_f1_{raw_key}", f"pre_f2_{raw_key}", f"f1_{raw_key}", f"f2_{raw_key}"]):
+            if alias in f and f[alias] is not None:
+                try:
+                    return float(f[alias])
+                except (ValueError, TypeError):
+                    pass
+
+        for k, v in f.items():
+            if v is not None and (k == raw_key or k.endswith(f"_{raw_key}")):
+                try:
+                    return float(v)
+                except (ValueError, TypeError):
+                    pass
+
+        return 0.0
+
     def _extract_feature_diff(self, f1: Dict[str, Any], f2: Dict[str, Any], col: str) -> float:
         if col.startswith("diff_"):
             raw_key = col[5:]
-            v1 = f1.get(raw_key) or f1.get(f"pre_f1_{raw_key}") or f1.get(f"f1_{raw_key}") or 0.0
-            v2 = f2.get(raw_key) or f2.get(f"pre_f2_{raw_key}") or f2.get(f"f2_{raw_key}") or 0.0
-            try:
-                return float(v1) - float(v2)
-            except (ValueError, TypeError):
-                return 0.0
+            v1 = self._get_feature_val(f1, raw_key)
+            v2 = self._get_feature_val(f2, raw_key)
+            return float(v1) - float(v2)
         elif col == "is_same_stance":
             st1 = (f1.get("stance") or "").strip().lower()
             st2 = (f2.get("stance") or "").strip().lower()
@@ -404,15 +450,15 @@ class FightPredictor:
             st2 = (f2.get("stance") or "").strip().lower()
             return 1.0 if (set([st1, st2]) == {"orthodox", "southpaw"}) else 0.0
         elif col == "pre_f1_ufc_debut":
-            return 1.0 if (f1.get("wins") or 0) + (f1.get("losses") or 0) == 0 else 0.0
+            w = (self._get_feature_val(f1, "wins"))
+            l = (self._get_feature_val(f1, "losses"))
+            return 1.0 if (w + l) == 0 else 0.0
         elif col == "pre_f2_ufc_debut":
-            return 1.0 if (f2.get("wins") or 0) + (f2.get("losses") or 0) == 0 else 0.0
+            w = (self._get_feature_val(f2, "wins"))
+            l = (self._get_feature_val(f2, "losses"))
+            return 1.0 if (w + l) == 0 else 0.0
         else:
-            v1 = f1.get(col) or f1.get(f"pre_f1_{col}") or 0.0
-            try:
-                return float(v1)
-            except (ValueError, TypeError):
-                return 0.0
+            return float(self._get_feature_val(f1, col))
 
     def _calculate_metrics(self, y_true: List[int], y_probs: List[float]) -> Dict[str, Any]:
         if not y_true or not y_probs:

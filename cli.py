@@ -820,6 +820,48 @@ def _generate_html_fight_report(event_name: str, event_date: str, predictions: l
 """
 
 
+def _generate_md_fight_report(event_name: str, event_date: str, predictions: list) -> str:
+    lines = [
+        f"# 🥊 UFC Fight Card Predictions: {event_name}",
+        f"**Event Date**: {event_date}",
+        "",
+        "| Matchup | Win Probabilities | Predicted Winner | Confidence |",
+        "| :--- | :--- | :--- | :--- |",
+    ]
+    for item in predictions:
+        f = item["fight"]
+        f1 = item["fighter1"]
+        f2 = item["fighter2"]
+        pred = item["prediction"]
+
+        name1 = f"{f1.get('first_name') or ''} {f1.get('last_name') or ''}".strip() or f.get("fighter1_name") or "Fighter 1"
+        name2 = f"{f2.get('first_name') or ''} {f2.get('last_name') or ''}".strip() or f.get("fighter2_name") or "Fighter 2"
+
+        p1 = int(round(pred["fighter1_win_probability"] * 100))
+        p2 = int(round(pred["fighter2_win_probability"] * 100))
+        winner_name = name1 if pred["predicted_winner"] == 1 else name2
+
+        lines.append(f"| **{name1}** vs **{name2}** | {p1}% vs {p2}% | **{winner_name}** | {pred['confidence_pct']}% |")
+
+    lines.append("")
+    lines.append("## Detailed Matchup Previews")
+    lines.append("")
+
+    for item in predictions:
+        f1 = item["fighter1"]
+        f2 = item["fighter2"]
+        pred = item["prediction"]
+        name1 = f"{f1.get('first_name') or ''} {f1.get('last_name') or ''}".strip()
+        name2 = f"{f2.get('first_name') or ''} {f2.get('last_name') or ''}".strip()
+
+        lines.append(f"### {name1} vs {name2}")
+        lines.append(f"- **Predicted Winner**: {name1 if pred['predicted_winner'] == 1 else name2} ({pred['confidence_pct']}%)")
+        lines.append(f"- **Tale of the Tape**: Height ({f1.get('height_cm','--')} cm vs {f2.get('height_cm','--')} cm), Reach ({f1.get('reach_cm','--')} cm vs {f2.get('reach_cm','--')} cm), Stance ({f1.get('stance','--')} vs {f2.get('stance','--')})")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 @cli.command("predict-card")
 @click.option("--event-id", "-e", default=None, help="Target Event ID. Auto-detects upcoming if omitted.")
 @click.option("--output", "-o", default=None, help="Output report path (e.g. data/predict_card.html)")
@@ -966,11 +1008,13 @@ def predict_card(ctx, event_id, output, fmt):
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
         if fmt == "html":
-            html_content = _generate_html_fight_report(event_name, event_date, fight_predictions)
-            out_path.write_text(html_content, encoding="utf-8")
+            content = _generate_html_fight_report(event_name, event_date, fight_predictions)
+        elif fmt == "markdown":
+            content = _generate_md_fight_report(event_name, event_date, fight_predictions)
         else:
             import json
-            out_path.write_text(json.dumps({"event_name": event_name, "event_date": event_date, "predictions": fight_predictions}, indent=2, default=str), encoding="utf-8")
+            content = json.dumps({"event_name": event_name, "event_date": event_date, "predictions": fight_predictions}, indent=2, default=str)
+        out_path.write_text(content, encoding="utf-8")
 
         rich_console.print(f"[bold green]Fight card prediction report exported to -> {out_path.resolve()}[/]")
 
