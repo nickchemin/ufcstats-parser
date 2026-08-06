@@ -9,6 +9,7 @@ on:
 jobs:
   scrape-and-export:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
     - uses: actions/checkout@v4
@@ -18,6 +19,16 @@ jobs:
       with:
         python-version: "3.10"
         cache: 'pip'
+
+    - name: Cache Database & Crawl Cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ufc_data.db
+          cache/
+        key: ufc-data-cache-${{ github.run_id }}
+        restore-keys: |
+          ufc-data-cache-
 
     - name: Install dependencies
       run: |

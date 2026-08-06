@@ -174,12 +174,18 @@ def _crawl_all_events(scraper, db, incremental, no_fight_details, limit_events):
         logger.info(f"Limiting crawl to {limit_events} events")
 
     existing_event_ids = set(db.get_event_ids()) if incremental else set()
+    if incremental:
+        if not existing_event_ids:
+            logger.warning("Database is empty during incremental crawl. Processing listing events.")
+        else:
+            logger.info(f"Incremental crawl active. {len(existing_event_ids)} existing events found in database.")
 
     for event in events:
         db.upsert_event(event)
 
     logger.info(f"Saved events to DB: {len(events)}")
 
+    consecutive_existing = 0
     with make_progress() as progress:
         task = progress.add_task("Processing events", total=len(events))
 
@@ -188,9 +194,15 @@ def _crawl_all_events(scraper, db, incremental, no_fight_details, limit_events):
 
             if incremental and event.event_id in existing_event_ids:
                 logger.debug(f"[skip] {event.name} (already in DB)")
+                consecutive_existing += 1
                 progress.advance(task)
+                if consecutive_existing >= 5:
+                    logger.info("Reached 5 consecutive existing events in DB; stopping incremental crawl early.")
+                    progress.update(task, completed=len(events))
+                    break
                 continue
 
+            consecutive_existing = 0
             _process_event(scraper, db, event, no_fight_details)
             progress.advance(task)
 
