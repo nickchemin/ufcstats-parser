@@ -152,7 +152,7 @@ python cli.py export --format parquet --tables events,fights
 python cli.py export --format excel --output ./data/
 ```
 
-### 3. Machine Learning Dataset Transformation
+### 3. Machine Learning Dataset & Fight Outcome Predictor
 
 The `transform` command generates a flat dataset comparing Fighter 1 vs Fighter 2 with calculated physical, ELO rating, record, striking, and grappling feature differentials for predictive modeling.
 
@@ -165,6 +165,16 @@ python cli.py transform --format parquet --output ./data/ml_dataset.parquet
 
 # Generate ML dataset in Excel format
 python cli.py transform --format excel --output ./data/ml_dataset.xlsx
+```
+
+The `train` command trains and evaluates the ML fight outcome predictor model using out-of-time temporal validation and feature-inverted symmetry data augmentation:
+
+```bash
+# Train ML fight predictor and output evaluation metrics (Accuracy, ROC-AUC, Log Loss, Feature Importances)
+python cli.py train
+
+# Train ML predictor with custom test set fraction and output path
+python cli.py train --test-size 0.2 --output ./data/fight_predictor_model.json
 ```
 
 ### 4. REST API Server

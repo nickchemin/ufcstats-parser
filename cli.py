@@ -610,6 +610,53 @@ def transform(ctx, fmt, output):
 
 
 # ------------------------------------------------------------------
+# train
+# ------------------------------------------------------------------
+
+@cli.command()
+@click.option(
+    "--output",
+    "-o",
+    default="data/fight_predictor_model.json",
+    show_default=True,
+    help="Output model parameters JSON path",
+)
+@click.option("--test-size", default=0.2, show_default=True, type=float, help="Test set split fraction")
+@click.pass_context
+def train(ctx, output, test_size):
+    """Train ML fight outcome prediction model and evaluate metrics"""
+    from src.ml.predictor import FightPredictor
+
+    db_path = ctx.obj["db_path"]
+    predictor = FightPredictor(db_path)
+    rich_console.print("[bold green]Training Fight Outcome ML Predictor...[/]")
+
+    metrics = predictor.train(test_size=test_size)
+
+    if "error" in metrics:
+        rich_console.print(f"[bold red]{metrics['error']}[/]")
+        return
+
+    table = Table(title="Model Evaluation Metrics (Out-of-Time Test Set)", box=box.ROUNDED)
+    table.add_column("Metric", style="bold white")
+    table.add_column("Value", style="bold green")
+
+    table.add_row("Training Samples", str(metrics["train_samples"]))
+    table.add_row("Test Samples", str(metrics["test_samples"]))
+    table.add_row("Accuracy", f"{metrics['accuracy']:.1f}%")
+    table.add_row("ROC-AUC", f"{metrics['roc_auc']:.3f}")
+    table.add_row("Log Loss", f"{metrics['log_loss']:.3f}")
+    table.add_row("Precision", f"{metrics['precision']:.3f}")
+    table.add_row("Recall", f"{metrics['recall']:.3f}")
+    table.add_row("F1 Score", f"{metrics['f1_score']:.3f}")
+
+    rich_console.print(table)
+
+    predictor.save_model(output)
+    rich_console.print(f"[bold green]Model saved -> {Path(output).resolve()}[/]")
+
+
+# ------------------------------------------------------------------
 # cache
 # ------------------------------------------------------------------
 
