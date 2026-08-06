@@ -1,57 +1,61 @@
-# UFCStats Parser & ML Dataset Generator
+# 🥊 UFCStats Parser, REST API & Soft-Voting ML Fight Predictor
 
-[![CI Build](https://github.com/nickchemin/ufcstats-parser/actions/workflows/ci.yml/badge.svg)](https://github.com/nickchemin/ufcstats-parser/actions/workflows/ci.yml)
-[![Weekly Auto-Scraper](https://github.com/nickchemin/ufcstats-parser/actions/workflows/weekly_scraper.yml/badge.svg)](https://github.com/nickchemin/ufcstats-parser/actions/workflows/weekly_scraper.yml)
 [![Python Version](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.14-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![FastAPI](https://img.shields.io/badge/FastAPI-REST%20API-009688.svg)](https://fastapi.tiangolo.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-1.3.0-009688.svg)](https://fastapi.tiangolo.com/)
+[![Scikit-Learn](https://img.shields.io/badge/scikit--learn-1.9.0-orange.svg)](https://scikit-learn.org/)
+[![XGBoost](https://img.shields.io/badge/XGBoost-3.4.0-red.svg)](https://xgboost.readthedocs.io/)
+[![LightGBM](https://img.shields.io/badge/LightGBM-4.7.0-blue.svg)](https://lightgbm.readthedocs.io/)
 
-A high-performance Python scraper, data parser, ML feature engineering pipeline, REST API, and CLI toolkit for extracting historical and ongoing fight statistics, detailed round-by-round metrics, and fighter profiles from [ufcstats.com](http://www.ufcstats.com).
-
-Designed for data scientists, sports analysts, and developers building MMA analytics tools, fight predictor models, or archival databases.
-
----
-
-## Table of Contents
-
-- [Key Features](#key-features)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [CLI Command Reference](#cli-command-reference)
-  - [Crawling Data](#1-crawling-data)
-  - [Exporting Data](#2-exporting-data)
-  - [Machine Learning Dataset Transformation](#3-machine-learning-dataset-transformation)
-  - [REST API Server](#4-rest-api-server)
-  - [Database & Cache Utilities](#5-database--cache-utilities)
-- [Database Schema & Architecture](#database-schema--architecture)
-- [Technical Highlights](#technical-highlights)
-- [Project Structure](#project-structure)
-- [License](#license)
+A high-performance, full-stack Python MMA analytics platform featuring:
+- **Automated Web Scraper & Crawler**: Custom SHA-256 Proof-of-Work challenge solver, persistent cookie cache, rate limiting, and proxy rotation.
+- **Relational SQLite Database**: Normalized schema storing completed/upcoming UFC events, fights, round-by-round striking/grappling metrics, and 4,500+ fighter career profiles.
+- **Zero Data Leakage ML Feature Pipeline**: 30 differential features including chronological pre-fight ELO ratings, physical metrics, win streaks, finish ratios, and striking/grappling rates.
+- **Soft-Voting ML Ensemble**: Combined **XGBoost** + **LightGBM** + **HistGradientBoosting** + **RandomForest** classifier.
+- **Invariant Dual-Pass Symmetrization**: Guarantees $P(F_1) + P(F_2) = 1.0$, identical predictions on corner swapping, and exact 50%/50% probabilities for same-fighter matchups.
+- **FastAPI REST API & Interactive Web UI**: Sub-millisecond cached inference, Swagger docs (`/docs`), and a modern Glassmorphism Web Dashboard (`/app`).
+- **CLI Toolkit & Card Predictor**: Auto-detects upcoming UFC events, simulates all matchups, and exports interactive HTML preview reports.
 
 ---
 
-## Key Features
+## 📊 ML Model Performance & Validation
 
-- **Full Data Coverage**: Scrapes all completed UFC events, individual fight results, granular round-by-round striking & grappling metrics, and complete fighter career profiles.
-- **High-Performance Async Engine**: Native `httpx` + `asyncio` batch parallel scraper (`--async`) with `asyncio.Semaphore` rate limiting for 5x–8x faster batch harvesting.
-- **Proxy Rotation Support**: IP rotation via `--proxy` or `--proxy-file` to bypass IP blocks during full historical crawls.
-- **Custom Proof-of-Work Bypass & Persistent Cookie Cache**: Natively solves ufcstats.com's custom SHA-256 client challenge in sync/async modes and caches authentication cookies (`_fmc`) to disk across sessions.
-- **Advanced ML Feature Engineering**: Chronological pre-fight **ELO rating calculations**, **Ape Index**, **Stance Matchup Indicators** (Orthodox vs Southpaw), and **pre-fight finish ratios** (% KO/Sub/Dec) with strict zero data leakage.
-- **Two-Tier RAM & Disk Caching**: In-memory LRU cache + file-based disk cache with configurable TTLs to eliminate redundant requests.
-- **Incremental Updates**: Detects existing database records with early-stopping to only fetch newly completed events or newly listed fighters.
-- **Relational Storage & Export**: Saves directly into a structured **SQLite** database (`WAL` mode) and exports to **JSON**, **CSV**, **Parquet**, and **Excel** files.
-- **Enhanced FastAPI REST API**: Asynchronous REST server with structured pagination metadata, matchup comparison endpoint (`/api/v1/matchup`), upcoming cards, and interactive Swagger UI.
+Evaluated on a **strict out-of-time chronological test set** (13,842 training samples, 3,462 test samples) with feature-inverted symmetry data augmentation:
+
+| Evaluation Metric | Test Score | Description |
+| :--- | :--- | :--- |
+| **ROC-AUC** | **`0.668`** | High discriminative power across historical UFC bouts |
+| **Accuracy** | **`61.6%`** | Out-of-time predictive accuracy on completed fights |
+| **Log Loss** | `0.651` | Well-calibrated probability distributions |
+| **Precision** | `0.616` | Symmetrical class 1 / class 0 precision |
+| **Recall** | `0.615` | Balanced true positive rate |
+| **F1 Score** | `0.615` | Symmetrical harmonic mean score |
 
 ---
 
-## Installation
+## 🌟 Key Features
 
-### Prerequisites
+### 🕸️ Scraper & Data Pipeline
+- **PoW Bypass & Cookie Management**: Automatically extracts nonce and solves ufcstats.com's SHA-256 client challenge to acquire and cache `_fmc` cookies.
+- **Async & Concurrent Harvesting**: `AsyncUFCStatsScraper` built on `httpx` + `asyncio` for 5x–8x faster batch downloads.
+- **Incremental Crawling**: `--incremental` flag detects existing database records with early-stopping to fetch only new events and un-crawled fighter profiles.
+- **Data Quality Diagnostics**: Integrated `DatabaseChecker` with data health scoring (100.0% score on full crawl).
 
-- Python **3.10** or higher
-- Git
+### 🤖 Machine Learning Engine
+- **30 Feature Differentials**: `diff_pre_elo`, `diff_height_cm`, `diff_weight_kg`, `diff_reach_cm`, `diff_ape_index`, `diff_reach_ratio`, `diff_age_years`, `diff_pre_wins`, `diff_pre_losses`, `diff_pre_win_rate`, `diff_pre_finish_win_rate`, `diff_pre_streak`, `diff_pre_days_since_last_fight`, `diff_slpm`, `diff_str_acc`, `diff_sapm`, `diff_strike_efficiency`, `diff_td_avg`, `diff_td_acc`, `diff_td_def`, stance flags, and debut indicators.
+- **Zero Data Leakage**: Pre-fight metrics are computed strictly from historical fights preceding the event date.
+- **Model Persistence**: Model weights and tree structures are serialized to `data/fight_predictor_model.pkl` and `data/fight_predictor_model.json`.
 
-### Setup
+### 🌐 REST API & Glassmorphism Dashboard
+- **FastAPI Endpoints**: REST API providing paginated access to events, fight details, fighter profiles, matchups, predictions, dataset generation, and health diagnostics.
+- **Sub-Millisecond Inference**: Cached `FightPredictor` instance executes predictions in `< 1` ms per request.
+- **Glassmorphism Web Dashboard**: Located at `/app`, featuring real-time fight predictor, upcoming card browser, fighter search directory, and system health diagnostics with XSS sanitization.
+
+---
+
+## ⚡ Quick Start
+
+### 1. Installation
 
 ```bash
 # Clone the repository
@@ -62,279 +66,84 @@ cd ufcstats-parser
 pip install -r requirements.txt
 ```
 
----
-
-## Quick Start
-
-Run a test crawl limited to 3 events to verify setup:
+### 2. Crawl Database
 
 ```bash
-python cli.py crawl --all --limit-events 3
-```
-
-Run high-speed async crawl with 5 parallel workers:
-
-```bash
-python cli.py crawl --all --async --concurrency 5
-```
-
-Export the collected data to CSV and JSON formats:
-
-```bash
-python cli.py export --format all --output ./data/
-```
-
-Generate the ML matchup dataset with pre-fight ELO ratings:
-
-```bash
-python cli.py transform --format csv --output ./data/ml_dataset.csv
-```
-
-Check your database status:
-
-```bash
-python cli.py db --stats
-```
-
----
-
-## CLI Command Reference
-
-### 1. Crawling Data
-
-The `crawl` command handles data ingestion from ufcstats.com.
-
-```bash
-# Crawl all completed events, fights, round stats, and fighter profiles
-python cli.py crawl --all
-
-# High-speed async crawl with parallel workers
-python cli.py crawl --all --async --concurrency 5
-
-# Crawl through a proxy or proxy pool list
-python cli.py --proxy "http://127.0.0.1:8080" crawl --all
-python cli.py --proxy-file proxies.txt crawl --all --async
-
-# Incremental update: fetch only new events and missing fighter profiles (with early stopping)
+# Incremental crawl for new events and un-crawled fighter profiles
 python cli.py crawl --incremental
 
-# Crawl upcoming scheduled events and fight cards
-python cli.py crawl --upcoming
-
-# Crawl a specific event by name or substring
-python cli.py crawl --event "UFC 309"
-
-# Crawl fighter profiles directory only (A-Z listing)
-python cli.py crawl --fighters
-
-# Fast crawl: skip detailed round-by-round statistics
-python cli.py crawl --all --no-fight-details
-
-# Skip full fighter directory crawl
-python cli.py crawl --all --no-fighters
-
-# Test crawl: limit the number of events to process (skips full fighter directory)
-python cli.py crawl --all --limit-events 5
+# High-speed asynchronous crawl with 5 parallel workers
+python cli.py crawl --all --async --concurrency 5
 ```
 
-### 2. Exporting Data
-
-The `export` command converts stored SQLite tables into JSON, CSV, Parquet, or Excel formats.
+### 3. Train ML Ensemble Predictor
 
 ```bash
-# Export all tables to all supported formats in ./data/
-python cli.py export --format all --output ./data/
-
-# Export specific tables to Apache Parquet binary format
-python cli.py export --format parquet --tables events,fights
-
-# Export database tables to an Excel workbook (.xlsx)
-python cli.py export --format excel --output ./data/
-```
-
-### 3. Machine Learning Dataset & Fight Outcome Predictor
-
-The `transform` command generates a flat dataset comparing Fighter 1 vs Fighter 2 with calculated physical, ELO rating, record, striking, and grappling feature differentials for predictive modeling.
-
-```bash
-# Generate ML dataset in CSV format
-python cli.py transform --format csv --output ./data/ml_dataset.csv
-
-# Generate ML dataset in Apache Parquet format
-python cli.py transform --format parquet --output ./data/ml_dataset.parquet
-
-# Generate ML dataset in Excel format
-python cli.py transform --format excel --output ./data/ml_dataset.xlsx
-```
-
-The `train` command trains and evaluates the ML fight outcome predictor model using out-of-time temporal validation and feature-inverted symmetry data augmentation:
-
-```bash
-# Train ML fight predictor and output evaluation metrics (Accuracy, ROC-AUC, Log Loss, Feature Importances)
 python cli.py train
-
-# Train ML predictor with custom test set fraction and output path
-python cli.py train --test-size 0.2 --output ./data/fight_predictor_model.json
 ```
 
-### 4. REST API Server & Web UI Dashboard
-
-The `serve` command launches an embedded FastAPI REST server providing HTTP endpoints and a sleek, interactive **Dark Glassmorphism Web UI Dashboard** featuring an AI Fight Matchup Simulator, Upcoming Cards predictions, Fighter Directory Search, and System Health Diagnostics.
+### 4. Predict an Upcoming UFC Fight Card
 
 ```bash
-# Start REST API server & Web Dashboard (Web Dashboard at http://127.0.0.1:8000/app)
-python cli.py serve
-
-# Start REST API server on custom host and port
-python cli.py serve --host 0.0.0.0 --port 8080
+# Auto-detects upcoming UFC card, runs predictions, and exports HTML report
+python cli.py predict-card
 ```
 
-Alternatively, launch the standalone Streamlit dashboard for data science workflows:
+### 5. Launch REST API Server & Web Dashboard
 
 ```bash
-# Install streamlit and launch Python dashboard
-pip install streamlit
-streamlit run app.py
+python cli.py serve --port 8000
 ```
+- **Web UI Dashboard**: `http://localhost:8000/app`
+- **Interactive Swagger Docs**: `http://localhost:8000/docs`
 
-#### 🌐 Live Demo & Free 1-Click Cloud Deployment (Render.com)
+---
 
-- 🚀 **Live Interactive REST API Demo**: [https://ufcstats-parser.onrender.com/docs](https://ufcstats-parser.onrender.com/docs)
+## 💻 CLI Command Reference
 
-You can also host your own instance publicly on [Render.com](https://render.com) using Docker:
+| Command | Arguments / Flags | Description |
+| :--- | :--- | :--- |
+| `python cli.py crawl` | `--all`, `--incremental`, `--async`, `--concurrency N` | Harvests events, fights, round stats, and fighter profiles |
+| `python cli.py train` | `--test-size 0.2`, `--output PATH` | Trains XGBoost/LightGBM Ensemble and saves model binary |
+| `python cli.py predict-card` | `--event-id ID`, `--format [html\|markdown\|json]` | Simulates entire fight card and exports HTML/MD preview report |
+| `python cli.py export` | `--format [csv\|json\|parquet\|excel]` | Exports raw database tables to structured dataset formats |
+| `python cli.py transform` | `--format [csv\|json\|parquet\|excel]` | Exports 30-feature matchup ML dataset |
+| `python cli.py check` | N/A | Runs database integrity and health score diagnostics |
+| `python cli.py db` | `--stats` | Displays SQLite table row counts and summary metrics |
+| `python cli.py cache` | `--stats`, `--clear` | Inspects or clears two-tier disk cache |
+| `python cli.py serve` | `--host 127.0.0.1`, `--port 8000` | Launches FastAPI server and Web Dashboard |
 
-[![Deploy to Render](https://img.shields.io/badge/Deploy%20to-Render-46E3B7?style=for-the-badge&logo=render&logoColor=white)](https://render.com/deploy?repo=https://github.com/nickchemin/ufcstats-parser)
+---
 
-1. Click the **Deploy to Render** button above (or sign up on [Render.com](https://render.com) for free).
-2. Connect your GitHub repository `nickchemin/ufcstats-parser`.
-3. Render automatically detects `render.yaml` & `Dockerfile`, builds the service, and provides a free public HTTPS domain with interactive Swagger UI.
+## 🌐 REST API Endpoint Summary
 
-### 5. Database & Cache Utilities
+| HTTP Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/app` | Serves interactive Glassmorphism Web UI Dashboard |
+| `GET` | `/api/v1/predict` | Computes ML outcome prediction between 2 fighters (`?fighter1_id=X&fighter2_id=Y`) |
+| `GET` | `/api/v1/events` | Paginated list of UFC events with optional search query (`?q=UFC`) |
+| `GET` | `/api/v1/events/upcoming` | List of scheduled upcoming UFC events |
+| `GET` | `/api/v1/events/{event_id}` | Event details and full fight card |
+| `GET` | `/api/v1/fights/{fight_id}` | Fight outcome, totals, and round-by-round statistics |
+| `GET` | `/api/v1/fighters` | Search fighter directory with pagination (`?q=Jon`) |
+| `GET` | `/api/v1/fighters/{fighter_id}` | Detailed fighter bio and career stats |
+| `GET` | `/api/v1/matchup` | Tale of the Tape physical and career differentials |
+| `GET` | `/api/v1/ml-dataset` | Generates flat ML feature matchup dataset |
+| `GET` | `/api/v1/health` | Data health diagnostics and health score |
+| `GET` | `/api/v1/stats/summary` | Database row counts and summary metrics |
+
+---
+
+## 🧪 Testing
+
+Run unit test suite with coverage report:
 
 ```bash
-# Run data quality & database integrity diagnostics report
-python cli.py check
-
-# View summary metrics of stored events, fights, fighters, and round rows
-python cli.py db --stats
-
-# View disk cache size, hit/miss count, and hit rate percentage
-python cli.py cache --stats
-
-# Clear all cached HTML files
-python cli.py cache --clear
-```
-
-### Global Options
-
-```bash
-# Set custom request delay range (min/max in seconds)
-python cli.py --delay-min 2.0 --delay-max 5.0 crawl --all
-
-# Specify a custom database file path
-python cli.py --db my_custom_ufc.db crawl --all
-
-# Specify a custom cache directory
-python cli.py --cache-dir ./custom_cache crawl --all
-
-# Enable detailed debug logs
-python cli.py -v crawl --all
+pytest
 ```
 
 ---
 
-## Database Schema & Architecture
+## 📄 License
 
-The database is built on SQLite using normalized relational tables with `ON CONFLICT` upsert handling:
-
-```
-                  ┌──────────────┐
-                  │    events    │
-                  └──────┬───────┘
-                         │ 1
-                         │
-                         │ N
-                  ┌──────┴───────┐
-                  │    fights    │
-                  └──────┬───────┘
-                         │ 1
-       ┌─────────────────┴─────────────────┐
-       │ N                                 │ N
-┌──────┴───────┐                    ┌──────┴───────┐
-│ fight_stats  │                    │ round_stats  │
-└──────────────┘                    └──────────────┘
-
-┌──────────────┐
-│   fighters   │
-└──────────────┘
-```
-
-### Tables Breakdown
-
-1. **`events`**: Event metadata (`event_id`, `name`, `date`, `location`, `fights_count`).
-2. **`fights`**: Matchup details (`fight_id`, `event_id`, `fighter1_id`, `fighter2_id`, `winner_id`, `outcome`, `method`, `round`, `time`, `weight_class`, `title_fight`).
-3. **`fight_stats`**: Fight-level overall statistics for each fighter (`kd`, `sig_str_landed`, `sig_str_attempted`, `total_str_landed`, `td_landed`, `ctrl_seconds`, `sig_head`, `sig_body`, `sig_leg`, `distance`, `clinch`, `ground`).
-4. **`round_stats`**: Granular statistics broken down by individual round (`round_number`, striking & grappling breakdown per round).
-5. **`fighters`**: Fighter career bio & stats (`height_cm`, `weight_kg`, `reach_cm`, `stance`, `dob`, `wins`, `losses`, `draws`, `slpm`, `str_acc`, `sapm`, `str_def`, `td_avg`, `td_acc`, `sub_avg`).
-
----
-
-## Technical Highlights
-
-### Proof-of-Work Challenge Bypass & Cookie Cache
-
-Unlike standard Cloudflare setups, `ufcstats.com` serves an inline client-side SHA-256 challenge page. The `UFCStatsScraper` engine automatically:
-1. Detects challenge pages and extracts the `nonce` and required difficulty level.
-2. Computes the valid SHA-256 hash iteration (`n`).
-3. Submits a verification `POST` request to `/__c` to receive the session authentication cookie (`_fmc`).
-4. Persists the authentication cookie to disk cache (`cookie__fmc.json`) valid for 7 days to eliminate challenge solving overhead across multiple CLI invocations.
-
-### Machine Learning Feature Pipeline
-
-- **Chronological Pre-Fight ELO Ratings**: Dynamically calculates opponent-adjusted ELO ratings (`pre_f1_elo`, `pre_f2_elo`, `diff_pre_elo`) prior to each fight without forward data leakage.
-- **Physical & Stance Indicators**: Calculates Ape Index (`reach_cm - height_cm`), Stance Same-Flag, and Orthodox vs Southpaw indicators.
-- **Pre-Fight Finish Ratios**: Tracks pre-fight KO/TKO, Submission, and Decision win ratios.
-
----
-
-## Project Structure
-
-```
-ufcstats-parser/
-├── cli.py                    # Main Click CLI application entry point
-├── requirements.txt          # Python package dependencies
-├── Dockerfile                # Docker container configuration
-├── render.yaml               # 1-click cloud deployment config
-├── CONTRIBUTING.md           # Open-source contribution guidelines
-├── LICENSE                   # MIT License
-├── README.md                 # Project documentation
-├── examples/
-│   └── demo.py               # Machine Learning dataset predictor demo script
-└── src/
-    ├── __init__.py
-    ├── api.py                # FastAPI REST server & Swagger UI engine
-    ├── scraper.py            # Custom HTTP client & PoW solver
-    ├── parsers/              # HTML parser modules
-    │   ├── __init__.py
-    │   ├── events.py         # Events listing parser
-    │   ├── fights.py         # Event fights list parser
-    │   ├── fight_detail.py   # Detailed fight & round metrics parser
-    │   └── fighters.py       # Fighter bio & directory parser
-    ├── storage/              # Persistence, ML & export layer
-    │   ├── __init__.py
-    │   ├── models.py         # Pydantic data models
-    │   ├── database.py       # SQLite manager & schema definitions
-    │   ├── ml_dataset.py     # Feature engineering & ML dataset generator
-    │   ├── cache.py          # Disk cache implementation
-    │   └── exporter.py       # JSON & CSV export logic
-    └── utils/                # Helper utilities
-        ├── __init__.py
-        ├── logger.py         # Rich logging & progress bar setup
-        └── rate_limiter.py   # Adaptive rate limiting implementation
-```
-
----
-
-## License
-
-Distributed under the MIT License. See [`LICENSE`](LICENSE) for more information.
+This project is licensed under the [MIT License](LICENSE).
