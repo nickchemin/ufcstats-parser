@@ -31,10 +31,12 @@ Designed for data scientists, sports analysts, and developers building MMA analy
 ## Key Features
 
 - **Full Data Coverage**: Scrapes all completed UFC events, individual fight results, granular round-by-round striking & grappling metrics, and complete fighter career profiles.
-- **Custom Proof-of-Work Bypass**: Natively solves ufcstats.com's custom SHA-256 client challenge using pure `requests` without requiring browser automation (Selenium/Playwright).
-- **Smart Disk Caching**: File-based response cache with configurable TTLs to eliminate redundant HTTP requests and prevent server bans.
-- **Incremental Updates**: Detects existing database records to only fetch newly completed events or newly listed fighters.
-- **Relational Storage & Export**: Saves directly into a structured **SQLite** database (`WAL` mode) and exports to **JSON** and UTF-8 **CSV** files.
+- **High-Performance Async Engine**: Native `httpx` + `asyncio` parallel scraper (`--async`) with `asyncio.Semaphore` rate limiting for 5x–8x faster batch harvesting.
+- **Proxy Rotation Support**: IP rotation via `--proxy` or `--proxy-file` to bypass IP blocks during full historical crawls.
+- **Custom Proof-of-Work Bypass**: Natively solves ufcstats.com's custom SHA-256 client challenge in sync/async modes without requiring browser automation (Selenium/Playwright).
+- **Two-Tier RAM & Disk Caching**: In-memory LRU cache + file-based disk cache with configurable TTLs to eliminate redundant requests.
+- **Incremental Updates**: Detects existing database records with early-stopping to only fetch newly completed events or newly listed fighters.
+- **Relational Storage & Export**: Saves directly into a structured **SQLite** database (`WAL` mode) and exports to **JSON**, **CSV**, **Parquet**, and **Excel** files.
 - **Adaptive Throttling**: Intelligent rate limiting with randomized delay intervals and automatic session backoff.
 - **Rich Terminal UI**: Live progress indicators, colored logs, and formatted data tables powered by `rich` and `click`.
 
@@ -68,6 +70,12 @@ Run a test crawl limited to 3 events to verify setup:
 python cli.py crawl --all --limit-events 3
 ```
 
+Run high-speed async crawl with 5 parallel workers:
+
+```bash
+python cli.py crawl --all --async --concurrency 5
+```
+
 Export the collected data to CSV and JSON formats:
 
 ```bash
@@ -92,7 +100,14 @@ The `crawl` command handles data ingestion from ufcstats.com.
 # Crawl all completed events, fights, round stats, and fighter profiles
 python cli.py crawl --all
 
-# Incremental update: fetch only new events and missing fighter profiles
+# High-speed async crawl with parallel workers
+python cli.py crawl --all --async --concurrency 5
+
+# Crawl through a proxy or proxy pool list
+python cli.py --proxy "http://127.0.0.1:8080" crawl --all
+python cli.py --proxy-file proxies.txt crawl --all --async
+
+# Incremental update: fetch only new events and missing fighter profiles (with early stopping)
 python cli.py crawl --incremental
 
 # Crawl upcoming scheduled events and fight cards
