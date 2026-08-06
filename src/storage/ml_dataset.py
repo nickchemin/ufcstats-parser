@@ -39,6 +39,36 @@ def _safe_sub(val1: Optional[float], val2: Optional[float], round_digits: int = 
     return round(val1 - val2, round_digits)
 
 
+FEATURE_COLUMNS = [
+    "diff_pre_elo",
+    "diff_height_cm",
+    "diff_weight_kg",
+    "diff_reach_cm",
+    "diff_ape_index",
+    "diff_age_years",
+    "is_same_stance",
+    "is_orthodox_vs_southpaw",
+    "pre_f1_ufc_debut",
+    "pre_f2_ufc_debut",
+    "diff_pre_wins",
+    "diff_pre_losses",
+    "diff_pre_win_rate",
+    "diff_pre_ko_win_rate",
+    "diff_pre_sub_win_rate",
+    "diff_pre_dec_win_rate",
+    "diff_pre_streak",
+    "diff_pre_days_since_last_fight",
+    "diff_pre_win_rate_last3",
+    "diff_slpm",
+    "diff_str_acc",
+    "diff_sapm",
+    "diff_str_def",
+    "diff_td_avg",
+    "diff_td_acc",
+    "diff_td_def",
+]
+
+
 class MLDatasetGenerator:
     """Generates ML-ready dataset with comparative differentials and pre-fight rolling metrics."""
 
@@ -181,37 +211,29 @@ class MLDatasetGenerator:
                 h2_last3 = t2["history"][-3:]
                 pre_f2_win_rate_last3 = round(sum(1 for x in h2_last3 if x == "win") / len(h2_last3), 3) if h2_last3 else None
 
-                # Compute pre-fight striking & grappling rates from past fight stats if available
-                def compute_pre_stats(t_dict: dict, fallback_f: dict):
-                    stats_list = t_dict["stats"]
+                # Compute pre-fight striking & grappling rates strictly from past fight stats (Zero Data Leakage)
+                def compute_pre_stats(t_dict: dict):
+                    stats_list = t_dict.get("stats", [])
                     if not stats_list:
-                        return (
-                            fallback_f.get("slpm"),
-                            fallback_f.get("str_acc"),
-                            fallback_f.get("sapm"),
-                            fallback_f.get("str_def"),
-                            fallback_f.get("td_avg"),
-                            fallback_f.get("td_acc"),
-                            fallback_f.get("td_def"),
-                        )
+                        return (None, None, None, None, None, None, None)
+
                     tot_sl = sum(s.get("sig_str_landed", 0) for s in stats_list)
                     tot_sa = sum(s.get("sig_str_attempted", 0) for s in stats_list)
                     tot_tdl = sum(s.get("td_landed", 0) for s in stats_list)
                     tot_tda = sum(s.get("td_attempted", 0) for s in stats_list)
-                    acc_str = round(tot_sl / tot_sa * 100, 1) if tot_sa > 0 else fallback_f.get("str_acc")
-                    acc_td = round(tot_tdl / tot_tda * 100, 1) if tot_tda > 0 else fallback_f.get("td_acc")
-                    return (
-                        fallback_f.get("slpm"),
-                        acc_str,
-                        fallback_f.get("sapm"),
-                        fallback_f.get("str_def"),
-                        fallback_f.get("td_avg"),
-                        acc_td,
-                        fallback_f.get("td_def"),
-                    )
 
-                f1_slpm, f1_str_acc, f1_sapm, f1_str_def, f1_td_avg, f1_td_acc, f1_td_def = compute_pre_stats(t1, f1)
-                f2_slpm, f2_str_acc, f2_sapm, f2_str_def, f2_td_avg, f2_td_acc, f2_td_def = compute_pre_stats(t2, f2)
+                    tot_mins = max(1.0, len(stats_list) * 10.0)
+
+                    slpm = round(tot_sl / tot_mins, 2)
+                    sapm = round(tot_sa / tot_mins, 2)
+                    acc_str = round((tot_sl / tot_sa) * 100.0, 1) if tot_sa > 0 else None
+                    acc_td = round((tot_tdl / tot_tda) * 100.0, 1) if tot_tda > 0 else None
+                    td_avg = round(tot_tdl / (tot_mins / 15.0), 2)
+
+                    return (slpm, acc_str, sapm, None, td_avg, acc_td, None)
+
+                f1_slpm, f1_str_acc, f1_sapm, f1_str_def, f1_td_avg, f1_td_acc, f1_td_def = compute_pre_stats(t1)
+                f2_slpm, f2_str_acc, f2_sapm, f2_str_def, f2_td_avg, f2_td_acc, f2_td_def = compute_pre_stats(t2)
 
                 # Physical ape index & stance flags
                 f1_reach = f1.get("reach_cm")

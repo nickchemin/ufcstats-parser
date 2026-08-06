@@ -1,5 +1,5 @@
 """
-Unit tests for FightPredictor ML training and inference module.
+Unit tests for FightPredictor ML training, persistence, and symmetry inference module.
 """
 
 from datetime import date
@@ -58,19 +58,45 @@ def test_fight_predictor_training(predictor_test_db, tmp_path):
     model_file = tmp_path / "model.json"
     predictor.save_model(str(model_file))
     assert model_file.exists()
+    assert (tmp_path / "model.pkl").exists()
 
 
-def test_fight_predictor_matchup_inference(predictor_test_db):
+def test_fight_predictor_model_persistence(predictor_test_db, tmp_path):
+    predictor1 = FightPredictor(str(predictor_test_db.db_path))
+    predictor1.train(test_size=0.3)
+
+    model_file = tmp_path / "saved_model.json"
+    predictor1.save_model(str(model_file))
+
+    predictor2 = FightPredictor(str(predictor_test_db.db_path))
+    loaded = predictor2.load_model(str(model_file))
+    assert loaded is True
+    assert predictor2.is_trained is True
+
+
+def test_fight_predictor_symmetry_and_same_fighter(predictor_test_db):
     predictor = FightPredictor(str(predictor_test_db.db_path))
     predictor.train(test_size=0.3)
 
-    f1_feat = {"diff_pre_elo": 150.0, "diff_reach_cm": 12.0, "is_same_stance": 1}
-    f2_feat = {"diff_pre_elo": -150.0, "diff_reach_cm": -12.0, "is_same_stance": 1}
+    f1_feat = {"pre_f1_elo": 1700.0, "reach_cm": 215.0, "height_cm": 193.0, "stance": "Orthodox"}
+    f2_feat = {"pre_f2_elo": 1500.0, "reach_cm": 203.0, "height_cm": 193.0, "stance": "Orthodox"}
 
-    pred = predictor.predict_matchup(f1_feat, f2_feat)
+    # 1. Forward prediction
+    p_forward = predictor.predict_matchup(f1_feat, f2_feat)
+    p1 = p_forward["fighter1_win_probability"]
+    p2 = p_forward["fighter2_win_probability"]
 
-    assert "fighter1_win_probability" in pred
-    assert "fighter2_win_probability" in pred
-    assert "predicted_winner" in pred
-    assert pred["predicted_winner"] in (1, 2)
-    assert round(pred["fighter1_win_probability"] + pred["fighter2_win_probability"], 2) == 1.0
+    assert round(p1 + p2, 4) == 1.0
+
+    # 2. Backward prediction (swapped corners)
+    p_backward = predictor.predict_matchup(f2_feat, f1_feat)
+    p1_swapped = p_backward["fighter1_win_probability"]
+    p2_swapped = p_backward["fighter2_win_probability"]
+
+    assert p1 == p2_swapped
+    assert p2 == p1_swapped
+
+    # 3. Same fighter against himself
+    p_same = predictor.predict_matchup(f1_feat, f1_feat)
+    assert p_same["fighter1_win_probability"] == 0.5
+    assert p_same["fighter2_win_probability"] == 0.5

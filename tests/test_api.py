@@ -162,6 +162,11 @@ def test_get_health(client):
 
 
 def test_predict_fight(client):
+    from src.api import _get_global_predictor
+    predictor = _get_global_predictor()
+    predictor.is_trained = True
+    predictor.model = object()  # Mock model instance
+
     res = client.get("/api/v1/predict?fighter1_id=f1&fighter2_id=f2")
     assert res.status_code == 200
     data = res.json()

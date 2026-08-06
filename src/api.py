@@ -5,6 +5,7 @@ Provides HTTP REST endpoints for querying events, fight cards, detailed fight me
 fighter profiles, matchup predictions, data health diagnostics, and ML matchup datasets.
 """
 
+from datetime import date
 import math
 from pathlib import Path
 import sqlite3
@@ -18,17 +19,21 @@ from anyio import to_thread
 from .storage.database import Database
 from .storage.checker import DatabaseChecker
 from .storage.ml_dataset import MLDatasetGenerator
+from .ml.predictor import FightPredictor
 
 app = FastAPI(
     title="UFCStats REST API & Web Dashboard",
     description="High-performance REST API & Interactive Dashboard for UFC events, fights, fighter profiles, and ML prediction.",
-    version="1.2.0",
+    version="1.3.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
 
 DB_PATH = "ufc_data.db"
 WEB_DIR = Path(__file__).parent.parent / "web"
+_GLOBAL_PREDICTOR: Optional[FightPredictor] = None
+_PRESERVED_TRACKERS: Optional[Dict[str, Any]] = None
+
 
 if WEB_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
@@ -40,8 +45,10 @@ if WEB_DIR.exists():
 
 
 def set_db_path(db_path: str):
-    global DB_PATH
+    global DB_PATH, _GLOBAL_PREDICTOR, _PRESERVED_TRACKERS
     DB_PATH = db_path
+    _GLOBAL_PREDICTOR = None
+    _PRESERVED_TRACKERS = None
 
 
 def _get_connection(db_path: str = None) -> sqlite3.Connection:
@@ -51,12 +58,29 @@ def _get_connection(db_path: str = None) -> sqlite3.Connection:
     return conn
 
 
+def _get_global_predictor() -> FightPredictor:
+    global _GLOBAL_PREDICTOR
+    if _GLOBAL_PREDICTOR is None:
+        _GLOBAL_PREDICTOR = FightPredictor(DB_PATH)
+        _GLOBAL_PREDICTOR.load_model()
+    return _GLOBAL_PREDICTOR
+
+
+def _get_fighter_trackers() -> Dict[str, Any]:
+    global _PRESERVED_TRACKERS
+    if _PRESERVED_TRACKERS is None:
+        generator = MLDatasetGenerator(DB_PATH)
+        generator.build_dataset()
+        _PRESERVED_TRACKERS = getattr(generator, "_last_history_tracker", {})
+    return _PRESERVED_TRACKERS
+
+
 @app.get("/", tags=["General"])
 async def root():
     """API root status endpoint."""
     return {
         "name": "UFCStats REST API & Dashboard",
-        "version": "1.2.0",
+        "version": "1.3.0",
         "web_dashboard": "/app",
         "docs": "/docs",
         "endpoints": [
@@ -290,32 +314,62 @@ def _predict_matchup(fighter1_id: str, fighter2_id: str):
             return None
         d1, d2 = dict(f1), dict(f2)
 
-        h1, h2 = d1.get("height_cm"), d2.get("height_cm")
-        r1, r2 = d1.get("reach_cm"), d2.get("reach_cm")
-        ape1 = (r1 - h1) if (r1 and h1) else None
-        ape2 = (r2 - h2) if (r2 and h2) else None
+        trackers = _get_fighter_trackers()
+        t1 = trackers.get(fighter1_id, {"elo": 1500.0, "wins": d1.get("wins") or 0, "losses": d1.get("losses") or 0, "streak": 0})
+        t2 = trackers.get(fighter2_id, {"elo": 1500.0, "wins": d2.get("wins") or 0, "losses": d2.get("losses") or 0, "streak": 0})
 
-        st1 = (d1.get("stance") or "").strip().lower()
-        st2 = (d2.get("stance") or "").strip().lower()
+        today = date.today()
+        def get_age(dob_str):
+            if not dob_str: return None
+            try:
+                d = date.fromisoformat(str(dob_str))
+                return round((today - d).days / 365.25, 1)
+            except Exception:
+                return None
 
-        feat = {
-            "diff_height_cm": (h1 - h2) if (h1 and h2) else 0.0,
-            "diff_reach_cm": (r1 - r2) if (r1 and r2) else 0.0,
-            "diff_ape_index": (ape1 - ape2) if (ape1 and ape2) else 0.0,
-            "is_same_stance": 1 if (st1 and st2 and st1 == st2) else 0,
-            "is_orthodox_vs_southpaw": 1 if (set([st1, st2]) == {"orthodox", "southpaw"}) else 0,
-            "diff_slpm": (d1.get("slpm") or 0.0) - (d2.get("slpm") or 0.0),
-            "diff_str_acc": (d1.get("str_acc") or 0.0) - (d2.get("str_acc") or 0.0),
-            "diff_sapm": (d1.get("sapm") or 0.0) - (d2.get("sapm") or 0.0),
-            "diff_str_def": (d1.get("str_def") or 0.0) - (d2.get("str_def") or 0.0),
-            "diff_td_avg": (d1.get("td_avg") or 0.0) - (d2.get("td_avg") or 0.0),
-            "diff_td_acc": (d1.get("td_acc") or 0.0) - (d2.get("td_acc") or 0.0),
-            "diff_td_def": (d1.get("td_def") or 0.0) - (d2.get("td_def") or 0.0),
+        feat1 = {
+            "pre_f1_elo": t1.get("elo", 1500.0),
+            "height_cm": d1.get("height_cm"),
+            "weight_kg": d1.get("weight_kg"),
+            "reach_cm": d1.get("reach_cm"),
+            "stance": d1.get("stance"),
+            "age": get_age(d1.get("dob")),
+            "wins": t1.get("wins", 0),
+            "losses": t1.get("losses", 0),
+            "streak": t1.get("streak", 0),
+            "slpm": d1.get("slpm"),
+            "str_acc": d1.get("str_acc"),
+            "sapm": d1.get("sapm"),
+            "str_def": d1.get("str_def"),
+            "td_avg": d1.get("td_avg"),
+            "td_acc": d1.get("td_acc"),
+            "td_def": d1.get("td_def"),
         }
 
-        from .ml.predictor import FightPredictor
-        predictor = FightPredictor(DB_PATH)
-        prediction = predictor.predict_matchup(feat, {})
+        feat2 = {
+            "pre_f2_elo": t2.get("elo", 1500.0),
+            "height_cm": d2.get("height_cm"),
+            "weight_kg": d2.get("weight_kg"),
+            "reach_cm": d2.get("reach_cm"),
+            "stance": d2.get("stance"),
+            "age": get_age(d2.get("dob")),
+            "wins": t2.get("wins", 0),
+            "losses": t2.get("losses", 0),
+            "streak": t2.get("streak", 0),
+            "slpm": d2.get("slpm"),
+            "str_acc": d2.get("str_acc"),
+            "sapm": d2.get("sapm"),
+            "str_def": d2.get("str_def"),
+            "td_avg": d2.get("td_avg"),
+            "td_acc": d2.get("td_acc"),
+            "td_def": d2.get("td_def"),
+        }
+
+        predictor = _get_global_predictor()
+        if not predictor.is_trained:
+            predictor.load_model()
+
+        prediction = predictor.predict_matchup(feat1, feat2)
         prediction["fighter1"] = d1
         prediction["fighter2"] = d2
         return prediction
@@ -332,6 +386,13 @@ async def predict_fight(
     res = await to_thread.run_sync(_predict_matchup, fighter1_id, fighter2_id)
     if not res:
         raise HTTPException(status_code=404, detail="One or both fighter profiles not found")
+
+    if not res.get("is_trained", True):
+        raise HTTPException(
+            status_code=400,
+            detail="ML Model is not trained. Please run python cli.py train first to build model parameters.",
+        )
+
     return res
 
 

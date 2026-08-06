@@ -1,53 +1,23 @@
 """
-Machine Learning fight outcome predictor.
+Machine Learning model trainer, predictor, and model persistence for UFC fight outcomes.
 
 Features:
-- Time-series temporal train/test split (no future data leakage)
-- Feature-inverted symmetry augmentation
-- Feature importance evaluation
-- Probability estimation for upcoming matchups
+- Temporal out-of-time train/test validation split
+- Dual-pass invariant symmetrization (P(F1) + P(F2) = 1.0, P(F1, F1) = 0.50)
+- Model serialization (save_model / load_model) with pickle & JSON metadata
+- Fallback classifier with explicit warning logging if scikit-learn is not installed
 """
 
 import json
 import math
+import pickle
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Tuple, Any, Optional
 
-from ..storage.ml_dataset import MLDatasetGenerator
+from ..storage.ml_dataset import MLDatasetGenerator, FEATURE_COLUMNS
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-FEATURE_COLUMNS = [
-    "diff_pre_elo",
-    "diff_height_cm",
-    "diff_weight_kg",
-    "diff_reach_cm",
-    "diff_ape_index",
-    "diff_age_years",
-    "is_same_stance",
-    "is_orthodox_vs_southpaw",
-    "diff_pre_wins",
-    "diff_pre_losses",
-    "diff_pre_win_rate",
-    "diff_pre_ko_win_rate",
-    "diff_pre_sub_win_rate",
-    "diff_pre_dec_win_rate",
-    "diff_pre_streak",
-    "diff_pre_days_since_last_fight",
-    "diff_pre_win_rate_last3",
-    "diff_slpm",
-    "diff_str_acc",
-    "diff_sapm",
-    "diff_str_def",
-    "diff_td_avg",
-    "diff_td_acc",
-    "diff_td_def",
-    "title_fight",
-    "is_main_event",
-    "pre_f1_ufc_debut",
-    "pre_f2_ufc_debut",
-]
 
 
 class FightPredictor:
@@ -62,11 +32,12 @@ class FightPredictor:
         self.scaler_means: Dict[str, float] = {}
         self.scaler_stds: Dict[str, float] = {}
         self.feature_importances: Dict[str, float] = {}
+        self.is_trained: bool = False
 
-    def prepare_dataset(self, test_size: float = 0.2, augment_symmetry: bool = True):
+    def prepare_dataset(self, test_size: float = 0.2) -> Tuple[List[List[float]], List[int], List[List[float]], List[int]]:
         """
-        Loads dataset, filters valid outcomes, applies temporal train/test split,
-        and optionally performs feature-inverted symmetry data augmentation.
+        Loads dataset, applies temporal train/test split, and applies symmetry
+        data augmentation to BOTH train and test sets to guarantee a balanced 50/50 target distribution.
         """
         generator = MLDatasetGenerator(str(self.db_path))
         raw_dataset = generator.build_dataset()
@@ -85,12 +56,13 @@ class FightPredictor:
         train_rows = valid_rows[:split_idx]
         test_rows = valid_rows[split_idx:]
 
-        X_train, y_train = self._extract_features(train_rows, augment_symmetry=augment_symmetry)
-        X_test, y_test = self._extract_features(test_rows, augment_symmetry=False)
+        # Apply symmetry augmentation to BOTH train and test to avoid single-class evaluation bias
+        X_train, y_train = self._extract_features(train_rows, augment_symmetry=True)
+        X_test, y_test = self._extract_features(test_rows, augment_symmetry=True)
 
         return X_train, y_train, X_test, y_test
 
-    def _extract_features(self, rows: List[Dict[str, Any]], augment_symmetry: bool = False) -> Tuple[List[List[float]], List[int]]:
+    def _extract_features(self, rows: List[Dict[str, Any]], augment_symmetry: bool = True) -> Tuple[List[List[float]], List[int]]:
         X = []
         y = []
 
@@ -136,7 +108,7 @@ class FightPredictor:
         """
         Trains model using temporal train/test split and computes evaluation metrics.
         """
-        X_train, y_train, X_test, y_test = self.prepare_dataset(test_size=test_size, augment_symmetry=True)
+        X_train, y_train, X_test, y_test = self.prepare_dataset(test_size=test_size)
 
         if not X_train:
             return {"error": "Insufficient dataset for training."}
@@ -154,23 +126,25 @@ class FightPredictor:
         X_train_scaled = self._scale_matrix(X_train)
         X_test_scaled = self._scale_matrix(X_test)
 
-        # Train model: try Gradient Boosting / Random Forest / Logistic Regression
+        # Train model: try Gradient Boosting / Logistic Regression
         try:
-            from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
+            from sklearn.ensemble import HistGradientBoostingClassifier
             self.model = HistGradientBoostingClassifier(max_iter=100, random_state=42)
             self.model.fit(X_train_scaled, y_train)
+            logger.info("Trained model using scikit-learn HistGradientBoostingClassifier")
 
-            # Extract feature importances if available, else compute correlation
             if hasattr(self.model, "feature_importances_"):
                 imp = self.model.feature_importances_
             else:
                 imp = [abs(self._pearson_corr([row[i] for row in X_train_scaled], y_train)) for i in range(n_features)]
 
         except ImportError:
-            # Fallback to simple Logistic Regression implementation
+            logger.warning("[WARNING] scikit-learn is not installed! Falling back to lightweight _SimpleLogisticRegression classifier.")
             self.model = _SimpleLogisticRegression(lr=0.01, epochs=300)
             self.model.fit(X_train_scaled, y_train)
             imp = [abs(w) for w in self.model.weights]
+
+        self.is_trained = True
 
         total_imp = sum(imp) or 1.0
         self.feature_importances = {
@@ -179,26 +153,33 @@ class FightPredictor:
 
         # Evaluate on test set
         test_preds = self._predict_proba_matrix(X_test_scaled)
-        metrics = self._compute_metrics(y_test, test_preds)
+        metrics = self._calculate_metrics(y_test, test_preds)
         metrics["train_samples"] = len(X_train)
         metrics["test_samples"] = len(X_test)
-        metrics["top_features"] = dict(
-            sorted(self.feature_importances.items(), key=lambda x: x[1], reverse=True)[:8]
-        )
 
-        logger.info(f"Model trained cleanly. Test Accuracy: {metrics['accuracy']:.1f}%, ROC-AUC: {metrics['roc_auc']:.3f}")
+        # Sort top 8 feature importances
+        sorted_imp = sorted(self.feature_importances.items(), key=lambda x: x[1], reverse=True)[:8]
+        metrics["top_features"] = dict(sorted_imp)
+
+        logger.info(
+            f"Model trained cleanly. Test Accuracy: {metrics['accuracy']}%, ROC-AUC: {metrics['roc_auc']}"
+        )
         return metrics
 
     def _scale_matrix(self, X: List[List[float]]) -> List[List[float]]:
-        X_scaled = []
+        scaled = []
         for row in X:
-            scaled_row = []
-            for i, col in enumerate(self.feature_columns):
-                mean = self.scaler_means.get(col, 0.0)
-                std = self.scaler_stds.get(col, 1.0)
-                scaled_row.append((row[i] - mean) / std)
-            X_scaled.append(scaled_row)
-        return X_scaled
+            scaled.append(self._scale_vector(row))
+        return scaled
+
+    def _scale_vector(self, vec: List[float]) -> List[float]:
+        scaled_row = []
+        for i, col in enumerate(self.feature_columns):
+            val = vec[i] if i < len(vec) else 0.0
+            mean = self.scaler_means.get(col, 0.0)
+            std = self.scaler_stds.get(col, 1.0)
+            scaled_row.append((val - mean) / std if std > 1e-6 else 0.0)
+        return scaled_row
 
     def _predict_proba_matrix(self, X_scaled: List[List[float]]) -> List[float]:
         if not self.model or not X_scaled:
@@ -209,7 +190,6 @@ class FightPredictor:
             result = []
             for p in probs:
                 try:
-                    # Check if p is subscriptable (e.g., sklearn 2D array [prob_0, prob_1])
                     result.append(float(p[1]))
                 except (TypeError, IndexError, KeyError):
                     result.append(float(p))
@@ -218,33 +198,86 @@ class FightPredictor:
 
     def predict_matchup(self, f1_features: Dict[str, Any], f2_features: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Predicts win probabilities for a matchup given fighter feature dicts.
+        Predicts win probabilities and matchup outcome using invariant dual-pass prediction.
+
+        Guarantees:
+        1. P(F1) + P(F2) = 1.0
+        2. Swapping fighters (F1 <-> F2) inverts probabilities identically
+        3. F1 vs F1 yields exactly 50% / 50% win probabilities
         """
-        if self.model is None:
-            self.train()
+        if not self.is_trained:
+            self.load_model()
 
-        matchup_row = {}
-        for col in self.feature_columns:
-            matchup_row[col] = f1_features.get(col, f2_features.get(col, 0.0))
+        if not self.is_trained or self.model is None:
+            return {
+                "error": "Model is not trained. Please run python cli.py train first.",
+                "fighter1_win_probability": 0.5,
+                "fighter2_win_probability": 0.5,
+                "predicted_winner": 1,
+                "confidence_pct": 50.0,
+                "is_trained": False,
+            }
 
-        feat_vec = [self._extract_row_vector(matchup_row)]
-        scaled_vec = self._scale_matrix(feat_vec)
-        prob_f1 = self._predict_proba_matrix(scaled_vec)[0]
-        prob_f2 = round(1.0 - prob_f1, 3)
-        prob_f1 = round(prob_f1, 3)
+        # Build forward vector (F1 vs F2)
+        v_forward = [self._extract_feature_diff(f1_features, f2_features, col) for col in self.feature_columns]
+        v_forward_scaled = [self._scale_vector(v_forward)]
 
-        predicted_winner = 1 if prob_f1 >= 0.5 else 2
+        # Build backward vector (F2 vs F1)
+        v_backward = [self._extract_feature_diff(f2_features, f1_features, col) for col in self.feature_columns]
+        v_backward_scaled = [self._scale_vector(v_backward)]
+
+        p1_forward = self._predict_proba_matrix(v_forward_scaled)[0]
+        p2_backward = self._predict_proba_matrix(v_backward_scaled)[0]
+
+        # Invariant Dual-Pass Symmetrization:
+        # P(F1 wins) = (P(F1 vs F2) + (1.0 - P(F2 vs F1))) / 2.0
+        prob_f1 = (p1_forward + (1.0 - p2_backward)) / 2.0
+        prob_f1 = max(0.01, min(0.99, prob_f1))
+        prob_f2 = round(1.0 - prob_f1, 4)
+        prob_f1 = round(prob_f1, 4)
+
+        winner = 1 if prob_f1 >= 0.5 else 2
+        confidence = round(max(prob_f1, prob_f2) * 100.0, 1)
 
         return {
             "fighter1_win_probability": prob_f1,
             "fighter2_win_probability": prob_f2,
-            "predicted_winner": predicted_winner,
-            "confidence_pct": round(max(prob_f1, prob_f2) * 100, 1),
+            "predicted_winner": winner,
+            "confidence_pct": confidence,
+            "is_trained": True,
         }
 
-    def _compute_metrics(self, y_true: List[int], y_probs: List[float]) -> Dict[str, Any]:
-        if not y_true:
-            return {"accuracy": 0.0, "roc_auc": 0.5, "log_loss": 0.693, "f1_score": 0.0}
+    def _extract_feature_diff(self, f1: Dict[str, Any], f2: Dict[str, Any], col: str) -> float:
+        if col.startswith("diff_"):
+            raw_key = col[5:]
+            v1 = f1.get(raw_key) or f1.get(f"pre_f1_{raw_key}") or f1.get(f"f1_{raw_key}") or 0.0
+            v2 = f2.get(raw_key) or f2.get(f"pre_f2_{raw_key}") or f2.get(f"f2_{raw_key}") or 0.0
+            try:
+                return float(v1) - float(v2)
+            except (ValueError, TypeError):
+                return 0.0
+        elif col == "is_same_stance":
+            st1 = (f1.get("stance") or "").strip().lower()
+            st2 = (f2.get("stance") or "").strip().lower()
+            return 1.0 if (st1 and st2 and st1 == st2) else 0.0
+        elif col == "is_orthodox_vs_southpaw":
+            st1 = (f1.get("stance") or "").strip().lower()
+            st2 = (f2.get("stance") or "").strip().lower()
+            return 1.0 if (set([st1, st2]) == {"orthodox", "southpaw"}) else 0.0
+        elif col == "pre_f1_ufc_debut":
+            return 1.0 if (f1.get("wins") or 0) + (f1.get("losses") or 0) == 0 else 0.0
+        elif col == "pre_f2_ufc_debut":
+            return 1.0 if (f2.get("wins") or 0) + (f2.get("losses") or 0) == 0 else 0.0
+        else:
+            v1 = f1.get(col) or f1.get(f"pre_f1_{col}") or 0.0
+            try:
+                return float(v1)
+            except (ValueError, TypeError):
+                return 0.0
+
+    def _calculate_metrics(self, y_true: List[int], y_probs: List[float]) -> Dict[str, Any]:
+        if not y_true or not y_probs:
+            return {}
 
         y_pred = [1 if p >= 0.5 else 0 for p in y_probs]
         correct = sum(1 for yt, yp in zip(y_true, y_pred) if yt == yp)
@@ -257,14 +290,14 @@ class FightPredictor:
             for yt, p in zip(y_true, y_probs)
         ) / len(y_true)
 
-        # ROC AUC approx
+        # ROC AUC
         pos_probs = [p for yt, p in zip(y_true, y_probs) if yt == 1]
         neg_probs = [p for yt, p in zip(y_true, y_probs) if yt == 0]
         if pos_probs and neg_probs:
             pairs = sum(1.0 if pos > neg else (0.5 if pos == neg else 0.0) for pos in pos_probs for neg in neg_probs)
             auc = round(pairs / (len(pos_probs) * len(neg_probs)), 3)
         else:
-            auc = 0.5
+            auc = 0.500
 
         # Precision, Recall, F1
         tp = sum(1 for yt, yp in zip(y_true, y_pred) if yt == 1 and yp == 1)
@@ -293,19 +326,52 @@ class FightPredictor:
         den = math.sqrt(sum((xi - mx) ** 2 for xi in x) * sum((yi - my) ** 2 for yi in y))
         return (num / den) if den > 1e-6 else 0.0
 
-    def save_model(self, filepath: str = "data/fight_predictor.json") -> None:
-        """Saves model weights and parameters to JSON file."""
+    def save_model(self, filepath: str = "data/fight_predictor_model.json") -> None:
+        """Saves trained model binary and JSON metadata to disk."""
         out_path = Path(filepath)
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        data = {
+        meta = {
             "feature_columns": self.feature_columns,
             "scaler_means": self.scaler_means,
             "scaler_stds": self.scaler_stds,
             "feature_importances": self.feature_importances,
+            "is_trained": self.is_trained,
         }
-        out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        logger.info(f"Saved model params to {out_path}")
+        out_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+        if self.model is not None:
+            pkl_path = out_path.with_suffix(".pkl")
+            with open(pkl_path, "wb") as f:
+                pickle.dump(self.model, f)
+            logger.info(f"Saved trained ML model binary to {pkl_path}")
+        logger.info(f"Saved model metadata to {out_path}")
+
+    def load_model(self, filepath: str = "data/fight_predictor_model.json") -> bool:
+        """Loads trained model binary and JSON metadata from disk."""
+        out_path = Path(filepath)
+        if not out_path.exists():
+            return False
+
+        try:
+            meta = json.loads(out_path.read_text(encoding="utf-8"))
+            self.feature_columns = meta.get("feature_columns", list(FEATURE_COLUMNS))
+            self.scaler_means = meta.get("scaler_means", {})
+            self.scaler_stds = meta.get("scaler_stds", {})
+            self.feature_importances = meta.get("feature_importances", {})
+            self.is_trained = meta.get("is_trained", False)
+
+            pkl_path = out_path.with_suffix(".pkl")
+            if pkl_path.exists():
+                with open(pkl_path, "rb") as f:
+                    self.model = pickle.load(f)
+                self.is_trained = True
+                logger.info(f"Loaded trained ML model binary from {pkl_path}")
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Failed to load model from {filepath}: {e}")
+            return False
 
 
 class _SimpleLogisticRegression:

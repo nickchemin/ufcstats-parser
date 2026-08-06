@@ -1,4 +1,4 @@
-// UFCStats Web Dashboard Application Logic
+// UFCStats Web Dashboard Application Logic with XSS Protection & Invariant Prediction
 
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
@@ -9,6 +9,17 @@ document.addEventListener('DOMContentLoaded', () => {
   loadFighterDirectory('');
   loadDiagnostics();
 });
+
+// XSS Sanitization Utility
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 function initModal() {
   const modal = document.getElementById('event-modal');
@@ -69,7 +80,6 @@ function initFighterSearch() {
   const f1Select = document.getElementById('f1-select');
   const f2Select = document.getElementById('f2-select');
 
-  // Load initial top fighters
   fetchFightersList('').then(list => {
     fightersCache = list;
     populateSelect(f1Select, list);
@@ -91,9 +101,11 @@ function populateSelect(selectEl, list) {
   selectEl.innerHTML = '';
   list.forEach(f => {
     const opt = document.createElement('option');
-    opt.value = f.fighter_id;
-    const name = `${f.first_name || ''} ${f.last_name || ''}`.trim() || f.fighter_id;
-    opt.textContent = `${name} (${f.stance || 'Unknown'}, ${f.weight_kg ? f.weight_kg + 'kg' : '--'})`;
+    opt.value = escapeHtml(f.fighter_id);
+    const name = escapeHtml(`${f.first_name || ''} ${f.last_name || ''}`.trim() || f.fighter_id);
+    const stance = escapeHtml(f.stance || 'Unknown');
+    const weight = f.weight_kg ? `${escapeHtml(f.weight_kg)}kg` : '--';
+    opt.textContent = `${name} (${stance}, ${weight})`;
     selectEl.appendChild(opt);
   });
 }
@@ -125,7 +137,7 @@ function initPredictor() {
     }
 
     if (f1Id === f2Id) {
-      alert('Please select two different fighters.');
+      renderSameFighter5050(f1Select);
       return;
     }
 
@@ -134,7 +146,10 @@ function initPredictor() {
 
     try {
       const res = await fetch(`/api/v1/predict?fighter1_id=${encodeURIComponent(f1Id)}&fighter2_id=${encodeURIComponent(f2Id)}`);
-      if (!res.ok) throw new Error('Prediction API error');
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Prediction API error');
+      }
       const data = await res.json();
       renderPredictionResult(data);
     } catch (err) {
@@ -143,6 +158,20 @@ function initPredictor() {
       btnPredict.textContent = '⚡ Simulate Fight Matchup';
       btnPredict.disabled = false;
     }
+  });
+}
+
+function renderSameFighter5050(f1Select) {
+  const opt = f1Select.options[f1Select.selectedIndex];
+  const name = opt ? opt.text.split('(')[0].trim() : 'Same Fighter';
+
+  renderPredictionResult({
+    fighter1_win_probability: 0.5,
+    fighter2_win_probability: 0.5,
+    predicted_winner: 1,
+    confidence_pct: 50.0,
+    fighter1: { first_name: name, last_name: '', nickname: 'Identical Fighter Matchup' },
+    fighter2: { first_name: name, last_name: '', nickname: 'Identical Fighter Matchup' },
   });
 }
 
@@ -155,7 +184,7 @@ function renderPredictionResult(data) {
   const p1 = Math.round(data.fighter1_win_probability * 100);
   const p2 = Math.round(data.fighter2_win_probability * 100);
 
-  // Header names
+  // Header names with HTML escaping
   document.getElementById('res-f1-name').textContent = `${f1.first_name || ''} ${f1.last_name || ''}`.trim();
   document.getElementById('res-f1-nickname').textContent = f1.nickname ? `"${f1.nickname}"` : '';
 
@@ -163,7 +192,7 @@ function renderPredictionResult(data) {
   document.getElementById('res-f2-nickname').textContent = f2.nickname ? `"${f2.nickname}"` : '';
 
   // Winner badge & Confidence
-  const winnerName = data.predicted_winner === 1 ? f1.last_name || 'Fighter 1' : f2.last_name || 'Fighter 2';
+  const winnerName = data.predicted_winner === 1 ? f1.last_name || f1.first_name || 'Fighter 1' : f2.last_name || f2.first_name || 'Fighter 2';
   document.getElementById('predicted-winner-badge').textContent = `Predicted Winner: ${winnerName}`;
   document.getElementById('confidence-text').textContent = `Confidence: ${data.confidence_pct}%`;
 
@@ -193,9 +222,9 @@ function renderPredictionResult(data) {
   metrics.forEach(m => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td style="text-align: right; font-weight: 600;">${m.v1}</td>
-      <td style="text-align: center; color: var(--text-muted); font-size: 0.85rem;">${m.label}</td>
-      <td style="text-align: left; font-weight: 600;">${m.v2}</td>
+      <td style="text-align: right; font-weight: 600;">${escapeHtml(m.v1)}</td>
+      <td style="text-align: center; color: var(--text-muted); font-size: 0.85rem;">${escapeHtml(m.label)}</td>
+      <td style="text-align: left; font-weight: 600;">${escapeHtml(m.v2)}</td>
     `;
     body.appendChild(tr);
   });
@@ -220,12 +249,17 @@ async function loadUpcomingEvents() {
     events.forEach(evt => {
       const card = document.createElement('div');
       card.className = 'event-card glass-card';
+      const evtName = escapeHtml(evt.name);
+      const evtDate = escapeHtml(evt.date || 'TBD');
+      const evtLoc = escapeHtml(evt.location || 'Unknown');
+      const evtId = escapeHtml(evt.event_id);
+
       card.innerHTML = `
         <div>
-          <h3>${evt.name}</h3>
-          <div class="event-meta">📅 ${evt.date || 'TBD'} | 📍 ${evt.location || 'Unknown'}</div>
+          <h3>${evtName}</h3>
+          <div class="event-meta">📅 ${evtDate} | 📍 ${evtLoc}</div>
         </div>
-        <button class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.85rem;" onclick="viewEventCard('${evt.event_id}')">View Fight Card</button>
+        <button class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.85rem;" onclick="viewEventCard('${evtId}')">View Fight Card</button>
       `;
       container.appendChild(card);
     });
@@ -240,7 +274,7 @@ async function viewEventCard(eventId) {
   const listEl = document.getElementById('modal-fights-list');
 
   try {
-    const res = await fetch(`/api/v1/events/${eventId}`);
+    const res = await fetch(`/api/v1/events/${encodeURIComponent(eventId)}`);
     const data = await res.json();
     nameEl.textContent = data.name || 'Event Fight Card';
     listEl.innerHTML = '';
@@ -251,14 +285,19 @@ async function viewEventCard(eventId) {
       for (const f of data.fights) {
         const row = document.createElement('div');
         row.className = 'modal-fight-row';
+        const f1Name = escapeHtml(f.fighter1_name || 'Fighter 1');
+        const f2Name = escapeHtml(f.fighter2_name || 'Fighter 2');
+        const wClass = escapeHtml(f.weight_class || 'Bout');
+        const outcome = escapeHtml(f.method ? f.method : (f.outcome ? 'Result: ' + f.outcome : 'Scheduled Matchup'));
+
         row.innerHTML = `
           <div>
-            <strong style="color: var(--red-accent);">${f.fighter1_name || 'Fighter 1'}</strong> vs 
-            <strong style="color: var(--blue-accent);">${f.fighter2_name || 'Fighter 2'}</strong>
-            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">${f.weight_class || 'Bout'} ${f.title_fight ? '🏆 Title Fight' : ''}</div>
+            <strong style="color: var(--red-accent);">${f1Name}</strong> vs 
+            <strong style="color: var(--blue-accent);">${f2Name}</strong>
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">${wClass} ${f.title_fight ? '🏆 Title Fight' : ''}</div>
           </div>
           <div style="text-align: right; font-size: 0.85rem; color: var(--gold-accent);">
-            ${f.method ? f.method : (f.outcome ? 'Result: ' + f.outcome : 'Scheduled Matchup')}
+            ${outcome}
           </div>
         `;
         listEl.appendChild(row);
@@ -296,16 +335,24 @@ function renderFightersGrid(grid, list) {
   list.forEach(f => {
     const card = document.createElement('div');
     card.className = 'fighter-card glass-card';
-    const name = `${f.first_name || ''} ${f.last_name || ''}`.trim();
+    const name = escapeHtml(`${f.first_name || ''} ${f.last_name || ''}`.trim());
+    const nick = f.nickname ? `"${escapeHtml(f.nickname)}"<br>` : '';
+    const stance = escapeHtml(f.stance || 'Unknown');
+    const height = f.height_cm ? `${escapeHtml(f.height_cm)}cm` : '--';
+    const reach = f.reach_cm ? `${escapeHtml(f.reach_cm)}cm` : '--';
+    const wins = escapeHtml(f.wins || 0);
+    const losses = escapeHtml(f.losses || 0);
+    const draws = escapeHtml(f.draws || 0);
+
     card.innerHTML = `
       <h3>${name}</h3>
       <div class="fighter-meta">
-        ${f.nickname ? `"${f.nickname}"<br>` : ''}
-        Stance: ${f.stance || 'Unknown'} | Height: ${f.height_cm ? f.height_cm + 'cm' : '--'}<br>
-        Reach: ${f.reach_cm ? f.reach_cm + 'cm' : '--'}
+        ${nick}
+        Stance: ${stance} | Height: ${height}<br>
+        Reach: ${reach}
       </div>
       <div style="font-size: 0.85rem; color: var(--green-success); font-weight: 600;">
-        Record: ${f.wins || 0}W - ${f.losses || 0}L - ${f.draws || 0}D
+        Record: ${wins}W - ${losses}L - ${draws}D
       </div>
     `;
     grid.appendChild(card);
@@ -325,19 +372,19 @@ async function loadDiagnostics() {
     const summary = await resDb.json();
 
     dbBox.innerHTML = `
-      <div class="metric-row"><span class="label">Events in DB</span><span class="value">${summary.events}</span></div>
-      <div class="metric-row"><span class="label">Fights in DB</span><span class="value">${summary.fights}</span></div>
-      <div class="metric-row"><span class="label">Fighter Profiles</span><span class="value">${summary.fighters}</span></div>
-      <div class="metric-row"><span class="label">Round Stats Rows</span><span class="value">${summary.round_stats_rows}</span></div>
+      <div class="metric-row"><span class="label">Events in DB</span><span class="value">${escapeHtml(summary.events)}</span></div>
+      <div class="metric-row"><span class="label">Fights in DB</span><span class="value">${escapeHtml(summary.fights)}</span></div>
+      <div class="metric-row"><span class="label">Fighter Profiles</span><span class="value">${escapeHtml(summary.fighters)}</span></div>
+      <div class="metric-row"><span class="label">Round Stats Rows</span><span class="value">${escapeHtml(summary.round_stats_rows)}</span></div>
     `;
 
     const resHealth = await fetch('/api/v1/health');
     const health = await resHealth.json();
 
     healthBox.innerHTML = `
-      <div class="metric-row"><span class="label">Data Quality Score</span><span class="value" style="font-size: 1.2rem; color: var(--gold-accent);">${health.health_score_pct}%</span></div>
-      <div class="metric-row"><span class="label">Orphan Fights</span><span class="value">${health.orphans ? health.orphans.orphan_fights : 0}</span></div>
-      <div class="metric-row"><span class="label">Completed Fights Missing Stats</span><span class="value">${health.missing_links ? health.missing_links.completed_fights_missing_stats : 0}</span></div>
+      <div class="metric-row"><span class="label">Data Quality Score</span><span class="value" style="font-size: 1.2rem; color: var(--gold-accent);">${escapeHtml(health.health_score_pct)}%</span></div>
+      <div class="metric-row"><span class="label">Orphan Fights</span><span class="value">${escapeHtml(health.orphans ? health.orphans.orphan_fights : 0)}</span></div>
+      <div class="metric-row"><span class="label">Completed Fights Missing Stats</span><span class="value">${escapeHtml(health.missing_links ? health.missing_links.completed_fights_missing_stats : 0)}</span></div>
     `;
   } catch (err) {
     dbBox.innerHTML = '<div style="color: var(--red-accent);">Error loading metrics</div>';

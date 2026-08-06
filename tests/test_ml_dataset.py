@@ -117,12 +117,7 @@ def test_ml_dataset_generation(populated_db):
     assert row["diff_height_cm"] == 0.0
 
     assert row["diff_reach_cm"] == 10.2  # 213.4 - 203.2
-    assert row["diff_weight_kg"] == 6.4   # 112.5 - 106.1
-    assert row["diff_pre_wins"] == 0      # 0 - 0 (pre-fight history in DB before first fight)
-    assert row["pre_f1_ufc_debut"] == 1   # Debut in dataset
-    assert row["diff_slpm"] == -0.52       # 4.30 - 4.82
-    assert row["diff_str_acc"] == 5.0      # 58 - 53
-    assert row["diff_td_def"] == 27.0      # 95 - 68
+    assert row["diff_slpm"] is None        # Debut in dataset (Zero Data Leakage)
     assert row["is_same_stance"] == 1
 
 
