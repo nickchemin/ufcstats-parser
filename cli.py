@@ -14,6 +14,8 @@ Usage examples:
     python cli.py db --stats
 """
 
+from datetime import date
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -742,26 +744,238 @@ def check(ctx):
 
 
 # ------------------------------------------------------------------
-# serve
+# predict-card
 # ------------------------------------------------------------------
 
-@cli.command()
-@click.option("--host", default="127.0.0.1", show_default=True, help="Host address to bind HTTP server")
-@click.option("--port", default=8000, show_default=True, type=int, help="Port to bind HTTP server")
-@click.pass_context
-def serve(ctx, host, port):
-    """Start embedded FastAPI REST API server with interactive Swagger UI"""
-    try:
-        import uvicorn
-        from src.api import app, set_db_path
-    except ImportError:
-        rich_console.print("[bold red]FastAPI and Uvicorn are required for REST API. Run: pip install fastapi uvicorn[/]")
-        return
+def _generate_html_fight_report(event_name: str, event_date: str, predictions: list) -> str:
+    import html
+    cards_html = []
+    for item in predictions:
+        f = item["fight"]
+        f1 = item["fighter1"]
+        f2 = item["fighter2"]
+        pred = item["prediction"]
 
-    set_db_path(ctx.obj["db_path"])
-    rich_console.print(f"[bold green]Starting UFCStats REST API server at http://{host}:{port}[/]")
-    rich_console.print(f"[bold cyan]Interactive Swagger UI available at http://{host}:{port}/docs[/]")
-    uvicorn.run(app, host=host, port=port, log_level="info")
+        name1 = f"{f1.get('first_name') or ''} {f1.get('last_name') or ''}".strip() or f.get("fighter1_name") or "Fighter 1"
+        name2 = f"{f2.get('first_name') or ''} {f2.get('last_name') or ''}".strip() or f.get("fighter2_name") or "Fighter 2"
+
+        p1 = int(round(pred["fighter1_win_probability"] * 100))
+        p2 = int(round(pred["fighter2_win_probability"] * 100))
+        winner_name = name1 if pred["predicted_winner"] == 1 else name2
+
+        cards_html.append(f"""
+        <div class="card">
+            <div class="matchup-header">
+                <div>
+                    <div class="weight-class">{html.escape(str(f.get('weight_class') or 'Bout'))} {'🏆 Title Fight' if f.get('title_fight') else ''}</div>
+                    <div class="fighter-names"><span class="f1">{html.escape(name1)}</span> vs <span class="f2">{html.escape(name2)}</span></div>
+                </div>
+                <div class="winner-badge">Predicted Winner: {html.escape(winner_name)} ({pred['confidence_pct']}%)</div>
+            </div>
+            <div class="prob-bar">
+                <div class="prob-fill f1-fill" style="width: {p1}%;">{p1}%</div>
+                <div class="prob-fill f2-fill" style="width: {p2}%;">{p2}%</div>
+            </div>
+            <table class="tape-table">
+                <tr><th>{html.escape(str(f1.get('height_cm') or '--'))} cm</th><th>Height</th><th>{html.escape(str(f2.get('height_cm') or '--'))} cm</th></tr>
+                <tr><th>{html.escape(str(f1.get('reach_cm') or '--'))} cm</th><th>Reach</th><th>{html.escape(str(f2.get('reach_cm') or '--'))} cm</th></tr>
+                <tr><th>{html.escape(str(f1.get('stance') or '--'))}</th><th>Stance</th><th>{html.escape(str(f2.get('stance') or '--'))}</th></tr>
+                <tr><th>{f1.get('wins', 0)}W-{f1.get('losses', 0)}L</th><th>Record</th><th>{f2.get('wins', 0)}W-{f2.get('losses', 0)}L</th></tr>
+                <tr><th>{html.escape(str(f1.get('slpm') or '--'))}</th><th>Sig. Strikes / min</th><th>{html.escape(str(f2.get('slpm') or '--'))}</th></tr>
+                <tr><th>{html.escape(str(f1.get('td_avg') or '--'))}</th><th>Takedowns / 15m</th><th>{html.escape(str(f2.get('td_avg') or '--'))}</th></tr>
+            </table>
+        </div>
+        """)
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>UFC Card Predictions: {html.escape(event_name)}</title>
+    <style>
+        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 2rem; }}
+        h1 {{ text-align: center; color: #f59e0b; margin-bottom: 0.5rem; }}
+        .subtitle {{ text-align: center; color: #94a3b8; margin-bottom: 2rem; }}
+        .card {{ background: rgba(30, 41, 59, 0.8); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); }}
+        .matchup-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }}
+        .weight-class {{ font-size: 0.85rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }}
+        .fighter-names {{ font-size: 1.4rem; font-weight: bold; margin-top: 0.2rem; }}
+        .f1 {{ color: #ef4444; }}
+        .f2 {{ color: #3b82f6; }}
+        .winner-badge {{ background: #10b981; color: #022c22; font-weight: bold; padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.9rem; }}
+        .prob-bar {{ display: flex; height: 28px; border-radius: 14px; overflow: hidden; background: #334155; margin: 1rem 0; font-weight: bold; font-size: 0.9rem; line-height: 28px; text-align: center; }}
+        .f1-fill {{ background: linear-gradient(90deg, #dc2626, #ef4444); color: white; }}
+        .f2-fill {{ background: linear-gradient(90deg, #2563eb, #3b82f6); color: white; }}
+        .tape-table {{ width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }}
+        .tape-table th {{ padding: 0.4rem; text-align: center; border-bottom: 1px solid #334155; }}
+        .tape-table th:nth-child(2) {{ color: #94a3b8; font-weight: normal; }}
+    </style>
+</head>
+<body>
+    <h1>🥊 UFC Fight Card Predictions Report</h1>
+    <div class="subtitle">{html.escape(event_name)} | {html.escape(str(event_date))}</div>
+    {''.join(cards_html)}
+</body>
+</html>
+"""
+
+
+@cli.command("predict-card")
+@click.option("--event-id", "-e", default=None, help="Target Event ID. Auto-detects upcoming if omitted.")
+@click.option("--output", "-o", default=None, help="Output report path (e.g. data/predict_card.html)")
+@click.option("--format", "fmt", type=click.Choice(["html", "markdown", "json"]), default="html", show_default=True, help="Report output format")
+@click.pass_context
+def predict_card(ctx, event_id, output, fmt):
+    """Generates ML predictions and Tale of the Tape preview report for an entire UFC fight card"""
+    db_path = ctx.obj["db_path"]
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    try:
+        if not event_id:
+            row = conn.execute("SELECT event_id, name, date FROM events WHERE date IS NULL OR date >= date('now') ORDER BY date ASC LIMIT 1").fetchone()
+            if not row:
+                row = conn.execute("SELECT event_id, name, date FROM events ORDER BY date DESC LIMIT 1").fetchone()
+            if not row:
+                rich_console.print("[bold red]No events found in database. Please run python cli.py crawl first.[/]")
+                return
+            event_id = row["event_id"]
+            event_name = row["name"]
+            event_date = row["date"]
+        else:
+            row = conn.execute("SELECT event_id, name, date FROM events WHERE event_id = ?", (event_id,)).fetchone()
+            event_name = row["name"] if row else event_id
+            event_date = row["date"] if row else "TBD"
+
+        rich_console.print(f"[bold cyan]Simulating predictions for fight card: {event_name} ({event_date})[/]")
+
+        fights = conn.execute("SELECT * FROM fights WHERE event_id = ?", (event_id,)).fetchall()
+        if not fights:
+            rich_console.print(f"[bold red]No fights found in database for event {event_id}.[/]")
+            return
+
+        from src.ml.predictor import FightPredictor
+        from src.storage.ml_dataset import MLDatasetGenerator
+
+        predictor = FightPredictor(db_path)
+        if not predictor.load_model():
+            rich_console.print("[yellow]Model not found on disk. Training Ensemble Predictor...[/]")
+            predictor.train()
+            predictor.save_model()
+
+        generator = MLDatasetGenerator(db_path)
+        trackers = generator.get_fighter_trackers()
+
+        today = date.today()
+        def get_age(dob_str):
+            if not dob_str: return None
+            try:
+                d = date.fromisoformat(str(dob_str))
+                return round((today - d).days / 365.25, 1)
+            except Exception:
+                return None
+
+        fight_predictions = []
+
+        table = Table(title=f"Predictions for {event_name}", box=box.ROUNDED)
+        table.add_column("Matchup", style="bold white")
+        table.add_column("Probabilities", style="bold yellow")
+        table.add_column("Predicted Winner", style="bold green")
+        table.add_column("Confidence", style="bold cyan")
+
+        for fight in fights:
+            f1_id = fight["fighter1_id"]
+            f2_id = fight["fighter2_id"]
+
+            f1 = conn.execute("SELECT * FROM fighters WHERE fighter_id = ?", (f1_id,)).fetchone() if f1_id else None
+            f2 = conn.execute("SELECT * FROM fighters WHERE fighter_id = ?", (f2_id,)).fetchone() if f2_id else None
+
+            d1 = dict(f1) if f1 else {"first_name": fight["fighter1_name"], "last_name": "", "fighter_id": f1_id}
+            d2 = dict(f2) if f2 else {"first_name": fight["fighter2_name"], "last_name": "", "fighter_id": f2_id}
+
+            t1 = trackers.get(f1_id, {"elo": 1500.0, "wins": d1.get("wins") or 0, "losses": d1.get("losses") or 0, "streak": 0})
+            t2 = trackers.get(f2_id, {"elo": 1500.0, "wins": d2.get("wins") or 0, "losses": d2.get("losses") or 0, "streak": 0})
+
+            feat1 = {
+                "pre_f1_elo": t1.get("elo", 1500.0),
+                "height_cm": d1.get("height_cm"),
+                "weight_kg": d1.get("weight_kg"),
+                "reach_cm": d1.get("reach_cm"),
+                "stance": d1.get("stance"),
+                "age": get_age(d1.get("dob")),
+                "wins": t1.get("wins", 0),
+                "losses": t1.get("losses", 0),
+                "streak": t1.get("streak", 0),
+                "slpm": d1.get("slpm"),
+                "str_acc": d1.get("str_acc"),
+                "sapm": d1.get("sapm"),
+                "str_def": d1.get("str_def"),
+                "td_avg": d1.get("td_avg"),
+                "td_acc": d1.get("td_acc"),
+                "td_def": d1.get("td_def"),
+            }
+
+            feat2 = {
+                "pre_f2_elo": t2.get("elo", 1500.0),
+                "height_cm": d2.get("height_cm"),
+                "weight_kg": d2.get("weight_kg"),
+                "reach_cm": d2.get("reach_cm"),
+                "stance": d2.get("stance"),
+                "age": get_age(d2.get("dob")),
+                "wins": t2.get("wins", 0),
+                "losses": t2.get("losses", 0),
+                "streak": t2.get("streak", 0),
+                "slpm": d2.get("slpm"),
+                "str_acc": d2.get("str_acc"),
+                "sapm": d2.get("sapm"),
+                "str_def": d2.get("str_def"),
+                "td_avg": d2.get("td_avg"),
+                "td_acc": d2.get("td_acc"),
+                "td_def": d2.get("td_def"),
+            }
+
+            pred = predictor.predict_matchup(feat1, feat2)
+            p1 = round(pred["fighter1_win_probability"] * 100)
+            p2 = round(pred["fighter2_win_probability"] * 100)
+
+            name1 = f"{d1.get('first_name') or ''} {d1.get('last_name') or ''}".strip() or fight["fighter1_name"]
+            name2 = f"{d2.get('first_name') or ''} {d2.get('last_name') or ''}".strip() or fight["fighter2_name"]
+
+            winner_name = name1 if pred["predicted_winner"] == 1 else name2
+
+            table.add_row(
+                f"{name1} vs {name2}",
+                f"{p1}% vs {p2}%",
+                winner_name,
+                f"{pred['confidence_pct']}%"
+            )
+
+            fight_predictions.append({
+                "fight": dict(fight),
+                "fighter1": d1,
+                "fighter2": d2,
+                "prediction": pred,
+            })
+
+        rich_console.print(table)
+
+        if not output:
+            output = f"data/predict_card_{event_id}.{fmt}"
+
+        out_path = Path(output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if fmt == "html":
+            html_content = _generate_html_fight_report(event_name, event_date, fight_predictions)
+            out_path.write_text(html_content, encoding="utf-8")
+        else:
+            import json
+            out_path.write_text(json.dumps({"event_name": event_name, "event_date": event_date, "predictions": fight_predictions}, indent=2, default=str), encoding="utf-8")
+
+        rich_console.print(f"[bold green]Fight card prediction report exported to -> {out_path.resolve()}[/]")
+
+    finally:
+        conn.close()
 
 
 # ------------------------------------------------------------------

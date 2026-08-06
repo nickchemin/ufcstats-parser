@@ -469,9 +469,16 @@ class MLDatasetGenerator:
                         t2["streak"] = 0
                         t2["history"].append("draw")
 
+            self._last_history_tracker = history_tracker
             return dataset
         finally:
             conn.close()
+
+    def get_fighter_trackers(self) -> Dict[str, Dict[str, Any]]:
+        """Runs dataset generation and returns pre-fight history tracker state for all fighters."""
+        if not getattr(self, "_last_history_tracker", None):
+            self.build_dataset()
+        return getattr(self, "_last_history_tracker", {})
 
     def export_ml_dataset(self, output_path: str = "data/ml_dataset.csv", output_format: str = "csv") -> None:
         """Builds dataset and writes output to CSV, JSON, Parquet, or Excel file."""
