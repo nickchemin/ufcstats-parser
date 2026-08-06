@@ -77,11 +77,12 @@ def _get_fighter_ids(soup: BeautifulSoup) -> Tuple[Optional[str], Optional[str]]
     persons = soup.find_all("div", class_="b-fight-details__person")
     ids = []
     for p in persons:
-        link = p.find("a", class_="b-link", href=re.compile(r"fighter-details"))
+        link = p.find("a", href=re.compile(r"fighter-details"))
         if link:
             path = urlparse(link.get("href", "")).path
             fid = path.rstrip("/").split("/")[-1]
-            ids.append(fid)
+            if fid:
+                ids.append(fid)
     f1 = ids[0] if len(ids) > 0 else None
     f2 = ids[1] if len(ids) > 1 else None
     return f1, f2

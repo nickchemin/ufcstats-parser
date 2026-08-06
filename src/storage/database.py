@@ -145,6 +145,10 @@ CREATE TABLE IF NOT EXISTS round_stats (
 );
 
 CREATE INDEX IF NOT EXISTS idx_fights_event ON fights(event_id);
+CREATE INDEX IF NOT EXISTS idx_fights_fighter1 ON fights(fighter1_id);
+CREATE INDEX IF NOT EXISTS idx_fights_fighter2 ON fights(fighter2_id);
+CREATE INDEX IF NOT EXISTS idx_events_date ON events(date);
+CREATE INDEX IF NOT EXISTS idx_fighters_name ON fighters(first_name, last_name);
 CREATE INDEX IF NOT EXISTS idx_fight_stats_fight ON fight_stats(fight_id);
 CREATE INDEX IF NOT EXISTS idx_round_stats_fight ON round_stats(fight_id);
 """

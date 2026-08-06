@@ -435,9 +435,17 @@ class AsyncUFCStatsScraper:
         return await self.get(url, use_cache=use_cache)
 
     async def get_soups_batch(self, paths: List[str], use_cache: bool = True) -> List[Optional[BeautifulSoup]]:
-        """Fetches multiple URLs concurrently using asyncio.gather."""
+        """Fetches multiple URLs concurrently using asyncio.gather with exception safety."""
         tasks = [self.get_soup(path, use_cache=use_cache) for path in paths]
-        return await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        cleaned = []
+        for res in results:
+            if isinstance(res, Exception):
+                logger.warning(f"Batch request encountered unhandled exception: {res}")
+                cleaned.append(None)
+            else:
+                cleaned.append(res)
+        return cleaned
 
     async def close(self):
         if self._client and not self._client.is_closed:
